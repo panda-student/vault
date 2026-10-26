@@ -19,7 +19,8 @@
     "format:check": "prettier --check frontend tests/support/frontend",
     "verify:regression": "node scripts/verify-regression.mjs",
     "build:test": "vue-tsc --noEmit --noUnusedLocals --noUnusedParameters && vite build --mode test",
-    "desktop:test": "node scripts/build-test.mjs"
+    "desktop:test": "node scripts/build-test.mjs",
+    "verify:prepush": "node scripts/preflight.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.4",

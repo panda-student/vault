@@ -10,6 +10,7 @@ const reportPath=join(artifacts,'installer-verification.json');
 const readReport=async()=>JSON.parse((await readFile(reportPath,'utf8')).replace(/^\uFEFF/,''));
 async function phase(name){
  const args=['-NoProfile','-ExecutionPolicy','Bypass','-File','scripts/verify-installer.ps1','-ArtifactDirectory',artifacts,'-Phase',name];
+ args.push('-RegistrationName',process.env.VAULT_INSTALLER_REG_NAME||'vault');
  if(process.env.VAULT_INSTALLER_NATIVE!=='1')args.push('-Silent');
  const result=await run('powershell.exe',args,{windowsHide:true,timeout:120000});console.log(result.stdout.trim());
 }

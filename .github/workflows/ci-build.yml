@@ -27,73 +27,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
           cache-on-failure: true
-      - name: Install frontend dependencies
-        run: npm ci
-      - name: Verify version consistency
-        run: node scripts/update-release.mjs validate
-      - name: Architecture boundaries
-        run: npm run verify:architecture
-      - name: Source formatting
-        run: |
-          npm run format:check
-          cargo fmt --all --check
-      - name: Frontend build
-        run: npm run build
-      - name: Rust unit tests
-        run: cargo test --workspace --locked
-      - name: Refresh dependency notices
-        shell: pwsh
-        run: |
-          cargo metadata --locked --format-version 1 --filter-platform x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml | Set-Content -Encoding utf8NoBOM target/dependency-metadata.json
-          node scripts/generate-notices.mjs
-      - name: Test-only desktop build
-        run: node scripts/build-test.mjs --release
-      - name: Current-format MCP acceptance
-        env:
-          VAULT_EXE: artifacts/test-build/vault.exe
-        run: |
-          npm run verify:integration
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run verify:permissions
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node scripts/verify-mcp-handoff.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Production desktop build
-        run: npm run desktop:build
-      - name: Reject test support in distribution
-        run: node scripts/verify-production.mjs
-      - name: Package portable build
-        run: npm run package:portable
-      - name: Package installer
-        run: npm run package:installer
-      - name: Verify installed application and uninstall preservation
-        run: node scripts/verify-installer.mjs
-      - name: Verify overwrite installation with retained MCP clients
-        shell: pwsh
-        run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $env:VAULT_HELPER_EXE = "artifacts/vault-$version/vault.exe"
-          $env:VAULT_OLD_EXE = $env:VAULT_HELPER_EXE
-          $env:VAULT_INSTALLER = "artifacts/vault-$version-setup.exe"
-          $env:VAULT_INSTALLER_REG_NAME = 'vault'
-          $env:VAULT_HANDOFF_REPORT = 'artifacts/installer-handoff-verification.json'
-          node scripts/verify-installer-handoff.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $env:VAULT_TEST_ROLLBACK = '1'
-          $env:VAULT_HANDOFF_REPORT = 'artifacts/installer-rollback-verification.json'
-          node scripts/verify-installer-handoff.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Remove-Item Env:VAULT_TEST_ROLLBACK
-          $env:VAULT_OLD_EXE = $env:VAULT_HELPER_EXE
-          $env:VAULT_TEST_DRAIN = '1'
-          $env:VAULT_HANDOFF_REPORT = 'artifacts/installer-drain-verification.json'
-          node scripts/verify-installer-handoff.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Full release preflight
+        run: node scripts/preflight.mjs --ci
       - name: Preserve failed acceptance diagnostics
         if: failure()
         uses: actions/upload-artifact@v4

@@ -94,14 +94,24 @@ assert.equal(
   32,
 );
 const ci = readFileSync(".github/workflows/ci-build.yml", "utf8");
-for (const command of [
+assert.ok(
+  ci.includes("node scripts/preflight.mjs --ci"),
+  "CI must run the shared preflight",
+);
+const pipeline = readFileSync("scripts/preflight.mjs", "utf8");
+for (const required of [
   "verify:architecture",
-  "cargo test --workspace --locked",
+  "Rust tests",
   "scripts/build-test.mjs",
-  "npm run desktop:build",
+  "desktop:build",
   "scripts/verify-production.mjs",
+  "scripts/package-installer.ps1",
+  "scripts/verify-installer.mjs",
 ]) {
-  assert.ok(ci.includes(command), `CI is missing ${command}`);
+  assert.ok(
+    pipeline.includes(required),
+    `Shared preflight is missing ${required}`,
+  );
 }
 execFileSync(process.execPath, ["--test", "scripts/architecture.test.mjs"], {
   stdio: "inherit",

@@ -1,4 +1,4 @@
-param([string]$ArtifactDirectory)
+param([string]$ArtifactDirectory, [ValidatePattern('^[a-z0-9-]+$')][string]$RegistrationName='vault')
 $ErrorActionPreference = 'Stop'
 function Get-Sha256([string]$Path) {
     $stream=[IO.File]::OpenRead($Path)
@@ -28,7 +28,7 @@ if (!(Test-Path -LiteralPath $compiler)) {
         Expand-Archive -LiteralPath $download -DestinationPath $toolParent
     }
 }
-& $compiler /INPUTCHARSET UTF8 "/DAPP_VERSION=$version" "/DPACKAGE_DIR=$package" "/DARTIFACT_DIR=$artifactRoot" (Join-Path $PSScriptRoot 'installer.nsi')
+& $compiler /INPUTCHARSET UTF8 "/DAPP_VERSION=$version" "/DAPP_REG_NAME=$RegistrationName" "/DPACKAGE_DIR=$package" "/DARTIFACT_DIR=$artifactRoot" (Join-Path $PSScriptRoot 'installer.nsi')
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
 $report = [ordered]@{ version=$version; bytes=(Get-Item -LiteralPath $output).Length; sha256=(Get-Sha256 $output); defaultDirectory='D:\vault'; dataPreservedOnUninstall=$true }
 $report | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $artifactRoot 'installer-size.json') -Encoding UTF8
