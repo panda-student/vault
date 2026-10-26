@@ -9,7 +9,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
-const run=promisify(execFile), executable=resolve(process.env.VAULT_EXE||'src-tauri/target/release/local-password-manager.exe');
+const run=promisify(execFile), executable=resolve(process.env.VAULT_EXE||'target/release/local-password-manager.exe');
 const root=await mkdtemp(join(tmpdir(),'vault-permissions-')),data=join(root,'data');
 const report={passed:false,checks:[],executableSha256:createHash('sha256').update(await readFile(executable)).digest('hex')};
 const check=(name,passed)=>{report.checks.push({name,passed:!!passed});assert.ok(passed,name);console.log('PASS',name);};

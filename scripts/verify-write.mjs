@@ -8,7 +8,7 @@ import {createHash} from 'node:crypto';
 import {promisify} from 'node:util';
 const run=promisify(execFile);
 const directory=await mkdtemp(join(tmpdir(),'vault-write-audit-'));
-const executable=resolve(process.env.VAULT_WRITE_EXE || 'src-tauri/target/release/local-password-manager.exe');
+const executable=resolve(process.env.VAULT_WRITE_EXE || 'target/release/local-password-manager.exe');
 const report={passed:false,executable,directory,checks:[]};
 const outputs=[];
 const check=(name,passed)=>{report.checks.push({name,passed});console.log(`${passed?'PASS':'FAIL'}: ${name}`);if(!passed)throw Error('Audit check failed');};

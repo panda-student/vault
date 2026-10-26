@@ -1,3 +1,4 @@
+import {runBrowserSync} from './lib/browser-cli.mjs';
 // Real WebView2 interactions on scripts/ui-audit-host.mjs's isolated fixture.
 import {execFileSync} from 'node:child_process';
 import {readFileSync,writeFileSync,mkdirSync,existsSync} from 'node:fs';
@@ -5,10 +6,10 @@ import {join} from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import assert from 'node:assert/strict';
-const runtime=JSON.parse(readFileSync('src-tauri/target/ui-audit-runtime.json','utf8'));
+const runtime=JSON.parse(readFileSync('target/ui-audit-runtime.json','utf8'));
 const browser=process.env.AGENT_BROWSER_BIN||'D:/nodejs/node_modules/agent-browser/bin/agent-browser-win32-x64.exe';
 const report={passed:false,checks:[]};
-const run=(...args)=>{const r=JSON.parse(execFileSync(browser,['--session','vault-resource-ui','--cdp',String(runtime.port),'--json',...args],{encoding:'utf8',windowsHide:true,maxBuffer:2e6}));assert.ok(r.success,r.error);return r.data};
+const run=(...args)=>{const r=JSON.parse(runBrowserSync(browser,['--session','vault-resource-ui-'+process.pid,'--cdp',String(runtime.port),'--json',...args],{encoding:'utf8',windowsHide:true,maxBuffer:2e6,timeout:30000}));assert.ok(r.success,r.error);return r.data};
 const read=s=>run('eval',s).result;
 const click=s=>{run('scrollintoview',s);run('click',s)};
 const fill=(s,v)=>{run('scrollintoview',s);run('fill',s,v)};
@@ -30,7 +31,7 @@ try{
  check('saved-tag-rule-filters-live-mcp',(await call('search_entries')).value.entries.every(e=>!e.tags.includes('订单系统')));
  check('explicit-read-denied-through-same-live-session',(await call('get_entries',{id:db.id})).value.code==='PERMISSION_DENIED');
  click(box('tag','订单系统','writeFile'));click('#save-permissions');wait('document.querySelector("#save-permissions").disabled');const target=join(runtime.directory,'denied-file.txt');const denied=await call('write_credential',{credentialId:db.id,field:'secret',target:{type:'file',path:target}});check('tag-file-deny-prevents-side-effects',denied.value.code==='PERMISSION_DENIED'&&!existsSync(target));
- click(`[data-preview="${db.id}"]`);check('preview-source-from-core',read('[...document.querySelectorAll("#permission-preview tbody tr")].some(r=>r.innerText.includes("写入文件")&&r.innerText.includes("禁止")&&r.innerText.includes("订单系统"))'));click('#permission-preview .secondary');
+ click(`[data-preview="${db.id}"]`);wait('[...document.querySelectorAll("#permission-preview tbody tr")].some(r=>r.innerText.includes("写入文件")&&r.innerText.includes("禁止")&&r.innerText.includes("订单系统"))');check('preview-source-from-core',read('[...document.querySelectorAll("#permission-preview tbody tr")].some(r=>r.innerText.includes("写入文件")&&r.innerText.includes("禁止")&&r.innerText.includes("订单系统"))'));click('#permission-preview .secondary');
  click('[data-expand="UVT"]');click(box('entry',db.id,'writeFile','订单系统'));wait(`[...document.querySelectorAll('[data-kind=entry][data-id="${db.id}"][data-key=writeFile]')].every(e=>e.checked)`);check('single-exception-syncs-across-tags',read(`document.querySelectorAll('[data-kind=entry][data-id="${db.id}"][data-key=writeFile]').length===2`));
  click('#customize');check('collapse-keeps-pending-rule',read('document.querySelectorAll("#permission-matrix tbody tr").length===1&&!document.querySelector("#save-permissions").disabled'));click('#save-permissions');wait('document.querySelector("#save-permissions").disabled');
  const allowedFile=join(runtime.directory,'allowed-file.txt');check('collapsed-entry-exception-still-authorizes-file',!(await call('write_credential',{credentialId:db.id,field:'secret',target:{type:'file',path:allowedFile}})).failed&&existsSync(allowedFile));

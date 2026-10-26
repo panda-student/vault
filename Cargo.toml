@@ -1,0 +1,10 @@
+[workspace]
+members = ["backend", "src-tauri"]
+resolver = "3"
+
+[profile.release]
+panic = "abort"
+strip = true
+lto = true
+codegen-units = 1
+opt-level = "s"

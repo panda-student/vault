@@ -1,3 +1,4 @@
+import {runBrowser} from './lib/browser-cli.mjs';
 // Real native input through Vault MCP; browser automation only sets up/observes fixtures.
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -27,11 +28,11 @@ await writeFile(html, `<!doctype html><meta charset="utf-8"><title>${title}</tit
 <button type="submit">Sign in</button></form>
 <script>window.submits=0;window.events=[];document.addEventListener('input',e=>window.events.push({id:e.target.id,trusted:e.isTrusted}));</script>`);
 const agent = process.env.AGENT_BROWSER_EXE || join(dirname(process.execPath),'node_modules/agent-browser/bin/agent-browser-win32-x64.exe');
-const session = 'vault-browser-fill-' + process.pid;
+const session = 'vault-browser-fill-' + randomUUID();
 const browserPath = process.env.VAULT_BROWSER_EXE || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-const browser = async (...args) => (await run(agent, ['--session', session, ...args], {timeout:30000, maxBuffer:1024*1024, windowsHide:true})).stdout.trim();
+const browser = async (...args) => (await runBrowser(agent, ['--session', session, ...args], {timeout:30000, maxBuffer:1024*1024, windowsHide:true})).stdout.trim();
 const evaluate = async expression => JSON.parse(await browser('eval', expression));
-const executable = resolve(process.env.VAULT_EXE || 'src-tauri/target/release/local-password-manager.exe');
+const executable = resolve(process.env.VAULT_EXE || 'target/release/local-password-manager.exe');
 const client = new Client({name:'isolated-browser-fill-audit', version:'1'});
 const transport = new StdioClientTransport({command:executable, args:['--mcp','--data-dir',join(directory,'data')], stderr:'pipe'});
 transport.stderr?.resume();

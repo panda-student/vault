@@ -14,8 +14,8 @@ const run=promisify(execFile),sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const root=await realpath(await mkdtemp(join(tmpdir(),'vault-installer-handoff-')));
 const folder=join(root,'custom install','vault'),data=join(root,'custom data'),executable=join(folder,'vault.exe');
 await mkdir(folder,{recursive:true});
-await copyFile(resolve(process.env.VAULT_OLD_EXE||process.env.VAULT_HELPER_EXE||'src-tauri/target/release/local-password-manager.exe'),executable);
-const helper=resolve(process.env.VAULT_HELPER_EXE||'src-tauri/target/debug/local-password-manager.exe');
+await copyFile(resolve(process.env.VAULT_OLD_EXE||process.env.VAULT_HELPER_EXE||'target/release/local-password-manager.exe'),executable);
+const helper=resolve(process.env.VAULT_HELPER_EXE||'target/debug/local-password-manager.exe');
 const expectedPayloadHash=createHash('sha256').update(await readFile(helper)).digest('hex');
 const oldHash=createHash('sha256').update(await readFile(executable)).digest('hex');
 const rollback=process.env.VAULT_TEST_ROLLBACK==='1';
@@ -89,6 +89,7 @@ c=sqlite3.connect(sys.argv[1]);s=json.loads(c.execute("SELECT value FROM metadat
   code=await install(helper,['--installer-replace',executable,join(root,'install.json')]);
   check(rollback?'replacement coordinator reports rollback':'replacement coordinator succeeds',rollback?code!==0:code===0);
   report.install=JSON.parse(await readFile(join(root,'install.json'),'utf8'));
+  if(rollback)check('restored desktop confirms health before MCP resumes',report.install.code==='INSTALLER_HEALTH');
  }
  check('old desktop exits automatically even with close-to-tray',desktop.exitCode===0);
  if(process.env.VAULT_INSTALLER&&!rollback){
@@ -98,16 +99,24 @@ c=sqlite3.connect(sys.argv[1]);s=json.loads(c.execute("SELECT value FROM metadat
   const result=await inFlight;report.drain={result,requestFinishedAt,desktopExitedAt};
   console.log('Drain result:',JSON.stringify(report.drain));
   check('in-flight MCP write finishes before desktop shutdown',!!result.id&&requestFinishedAt<=desktopExitedAt);
+  // The coordinator releases the pause before retained bridges finish their
+  // handshake. Poll a read only; never retry the already committed write.
+  let resumed=false;
+  for(let attempt=0;attempt<100;attempt++){
+   try {await call(a,'get_entries',{id:entry.id});resumed=true;break;}
+   catch(error){if(!String(error).includes('UPDATE_IN_PROGRESS'))throw error;await sleep(150);}
+  }
+  check('retained MCP connection resumes before drain verification',resumed);
   const matches=await call(a,'search_entries',{query:'accepted installer in-flight write'});
   check('in-flight write is committed once without replay',matches.entries.length===1&&matches.entries[0].id===result.id);
  }
  check(rollback?'old executable is restored after failed startup':'installed executable matches the packaged payload',await hash(executable)===(rollback?oldHash:expectedPayloadHash));
- const observe=async()=>JSON.parse((await run('powershell.exe',['-NoProfile','-Command',`$items=@(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq $env:VAULT_AUDIT_IMAGE -and $_.CommandLine -notlike '*--mcp*' }); @{items=@($items | Select-Object ProcessId,ParentProcessId,CommandLine);count=$items.Count;customData=(@($items | Where-Object { $_.CommandLine.Contains($env:VAULT_AUDIT_DATA) }).Count -eq 1)} | ConvertTo-Json -Compress`],{windowsHide:true,env:{...process.env,VAULT_AUDIT_IMAGE:executable,VAULT_AUDIT_DATA:data}})).stdout);
+ const observe=async()=>JSON.parse((await run('powershell.exe',['-NoProfile','-Command',`Add-Type 'using System;using System.Text;using System.Runtime.InteropServices;public class VaultWindowProof{[DllImport("user32.dll",CharSet=CharSet.Unicode)]public static extern int GetClassName(IntPtr h,StringBuilder b,int n);public static bool Ready(int pid){var p=System.Diagnostics.Process.GetProcessById(pid);var b=new StringBuilder(256);GetClassName(p.MainWindowHandle,b,256);return b.ToString()=="vault.desktop";}}';$items=@(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq $env:VAULT_AUDIT_IMAGE -and $_.CommandLine -notlike '*--mcp*' }); @{items=@($items | Select-Object ProcessId,ParentProcessId,CommandLine);count=$items.Count;windowReady=(@($items | Where-Object { [VaultWindowProof]::Ready($_.ProcessId) }).Count -eq 1);customData=(@($items | Where-Object { $_.CommandLine.Contains($env:VAULT_AUDIT_DATA) }).Count -eq 1)} | ConvertTo-Json -Compress`],{windowsHide:true,env:{...process.env,VAULT_AUDIT_IMAGE:executable,VAULT_AUDIT_DATA:data}})).stdout);
  let observed=await observe();
  const settled=Date.now()+10000;
- while((observed.count!==1||!observed.customData)&&Date.now()<settled){await sleep(200);observed=await observe();}
+ while((observed.count!==1||!observed.customData||!observed.windowReady)&&Date.now()<settled){await sleep(200);observed=await observe();}
  report.desktop=observed;console.log('Restarted desktop:',JSON.stringify(observed));
- check('exactly one desktop restarts with the original custom data path',observed.count===1&&observed.customData);
+ check('exactly one desktop restarts with the original custom data path',observed.count===1&&observed.customData&&observed.windowReady);
  for(const [index,c]of clients.entries()){
   let ready=false;for(let i=0;i<100;i++){try{await call(c,'get_entries',{id:entry.id});ready=true;break;}catch{await sleep(150);}}
   check(`original MCP connection ${index+1} resumes without reconnect`,ready&&transports[index].pid===ids[index]);

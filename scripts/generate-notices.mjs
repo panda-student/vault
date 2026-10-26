@@ -2,14 +2,14 @@ import {readFile,readdir,writeFile} from 'node:fs/promises';
 import {dirname,join} from 'node:path';
 import {createHash} from 'node:crypto';
 // Input is cargo metadata --filter-platform x86_64-pc-windows-msvc.
-const metadata=JSON.parse(await readFile('src-tauri/target/dependency-metadata.json','utf8'));
+const metadata=JSON.parse(await readFile('target/dependency-metadata.json','utf8'));
 const nodes=new Map(metadata.resolve.nodes.map(n=>[n.id,n]));
 const ids=new Set();
 function visit(id){
  if(ids.has(id))return;ids.add(id);
  for(const dep of nodes.get(id)?.deps??[]) if(dep.dep_kinds.some(k=>k.kind===null))visit(dep.pkg);
 }
-visit(metadata.resolve.root);
+for (const id of metadata.workspace_members) visit(id);
 const chunks=['Third-party notices\n\nGenerated from the Windows dependency graph and frontend runtime packages.\nEach component retains its own license; this project does not relicense dependencies.\n'];
 const missing=[];
 const sharedTexts=new Map();
@@ -27,7 +27,7 @@ async function append(name,license,directory,extra){
  chunks.push(`\n${name}\nDeclared license: ${license||'See component files'}\nLicense/notice texts: ${refs.join(', ')}\n`);
  if(!texts.length)missing.push(name);
 }
-for(const p of metadata.packages.filter(p=>ids.has(p.id)&&p.id!==metadata.resolve.root).sort((a,b)=>a.name.localeCompare(b.name))){
+for(const p of metadata.packages.filter(p=>ids.has(p.id)&&!metadata.workspace_members.includes(p.id)).sort((a,b)=>a.name.localeCompare(b.name))){
  await append(`${p.name} ${p.version}`,p.license,dirname(p.manifest_path),p.license_file);
 }
 for(const name of ['vue','@vue/shared','@vue/reactivity','@vue/runtime-core','@vue/runtime-dom','@tauri-apps/api']){

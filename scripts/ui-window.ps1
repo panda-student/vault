@@ -9,7 +9,7 @@ param(
     [int]$ClientY=-1
 )
 $ErrorActionPreference='Stop'
-$runtime=Get-Content -LiteralPath (Join-Path $PSScriptRoot '../src-tauri/target/ui-audit-runtime.json') -Raw | ConvertFrom-Json
+$runtime=Get-Content -LiteralPath (Join-Path $PSScriptRoot '../target/ui-audit-runtime.json') -Raw | ConvertFrom-Json
 $process=Get-Process -Id $runtime.pid -ErrorAction Stop
 $details=Get-CimInstance Win32_Process -Filter "ProcessId = $($runtime.pid)"
 if ($process.Path -ne $runtime.executable -or !$details.CommandLine.Contains($runtime.directory)) { throw 'Not the isolated UI fixture' }

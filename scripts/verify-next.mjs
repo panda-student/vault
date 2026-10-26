@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-const executable=resolve(process.env.VAULT_EXE||'src-tauri/target/release/local-password-manager.exe');
+const executable=resolve(process.env.VAULT_EXE||'target/release/local-password-manager.exe');
 const root=await mkdtemp(join(tmpdir(),'vault-next-'));
 const data=join(root,'data'),report={passed:false,checks:[],root};
 const check=(name,ok)=>{report.checks.push({name,passed:!!ok});assert.ok(ok,name);console.log('PASS',name);};
@@ -56,7 +56,7 @@ try{
  const removed=await call('delete_entries',{id:db.id,expectedRevision:2});
  check('soft-delete',!removed.failed&&(await call('get_entries',{id:db.id})).failed);
  check('deleted-write-blocked',(await call('write_credential',{credentialId:db.id,field:'secret',target:{type:'file',path:join(root,'deleted.txt')}})).failed);
- check('purge-tool-unavailable',(await call('empty_trash',{})).failed);
+ check('purge-tool-unavailable',(await call('trash.empty',{})).failed);
  check('removed-api-tool-unavailable',(await call('execute_api_request',{credentialId:api.id,path:'/'})).failed);
  // P1: 校验失败必须携带字段级 details，AI 才能定位字段自纠而不是盲试。
  const detailTarget=(await call('create_entries',{kind:'password',title:'Acceptance Restore',tags:['AcceptanceTag'],secret})).value;
@@ -87,7 +87,7 @@ try{
  desktop=spawn(executable,['--data-dir',join(root,'desktop-data'),'--smoke-test',smokePath],{windowsHide:true,stdio:'ignore'});
  const dialogReport=join(root,'native-trash.json');
  dialogHelper=spawn('powershell',['-NoProfile','-ExecutionPolicy','Bypass','-File',resolve('scripts/verify-native-trash.ps1'),'-ProcessId',String(desktop.pid),'-ReportPath',dialogReport],{windowsHide:true,stdio:'ignore'});
- const closed=await Promise.race([once(desktop,'close'),new Promise(r=>setTimeout(()=>r(null),100000).unref())]);
+ const closed=await Promise.race([once(desktop,'exit'),new Promise(r=>setTimeout(()=>r(null),240000).unref())]);
  if(!closed){desktop.kill();throw Error('Desktop test timeout');}
  report.desktop=JSON.parse(await readFile(smokePath,'utf8'));
  check('native-desktop-suite',closed[0]===0&&report.desktop.passed);

@@ -10,5 +10,10 @@
     "isolatedModules": true,
     "types": ["vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts"]
+  "include": [
+    "frontend/**/*.ts",
+    "frontend/**/*.vue",
+    "tests/support/frontend/**/*.ts",
+    "vite.config.ts"
+  ]
 }

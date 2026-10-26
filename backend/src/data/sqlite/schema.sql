@@ -1,0 +1,4 @@
+CREATE TABLE metadata (name TEXT PRIMARY KEY, value BLOB NOT NULL);
+CREATE TABLE entries (id TEXT PRIMARY KEY, encrypted BLOB NOT NULL, revision INTEGER NOT NULL, pinned INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE trash (id TEXT PRIMARY KEY, encrypted BLOB NOT NULL, revision INTEGER NOT NULL, pinned INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER NOT NULL);
+PRAGMA user_version=4;

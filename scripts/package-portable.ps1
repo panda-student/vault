@@ -7,7 +7,7 @@ function Get-Sha256([string]$Path) {
     finally { $stream.Dispose(); $hasher.Dispose() }
 }
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$releaseBinary = Join-Path $projectRoot 'src-tauri\target\release\local-password-manager.exe'
+$releaseBinary = Join-Path $projectRoot 'target\release\local-password-manager.exe'
 if (!(Test-Path -LiteralPath $releaseBinary)) { throw 'Run npm run desktop:build first.' }
 $version = (Get-Content -LiteralPath (Join-Path $projectRoot 'package.json') -Raw | ConvertFrom-Json).version
 $artifactRoot = if ($OutputDirectory) { [System.IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path $projectRoot 'artifacts' }

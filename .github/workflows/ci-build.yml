@@ -30,26 +30,32 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.90.0
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: .
           cache-on-failure: true
       - name: Install frontend dependencies
         run: npm ci
       - name: Verify version consistency
         run: node scripts/update-release.mjs validate
+      - name: Architecture boundaries
+        run: npm run verify:architecture
+      - name: Source formatting
+        run: |
+          npm run format:check
+          cargo fmt --all --check
       - name: Frontend build
         run: npm run build
       - name: Rust unit tests
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+        run: cargo test --workspace --locked
       - name: Refresh dependency notices
         shell: pwsh
         run: |
-          cargo metadata --locked --format-version 1 --filter-platform x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml | Set-Content -Encoding utf8NoBOM src-tauri/target/dependency-metadata.json
+          cargo metadata --locked --format-version 1 --filter-platform x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml | Set-Content -Encoding utf8NoBOM target/dependency-metadata.json
           node scripts/generate-notices.mjs
       - name: Desktop build
         run: npm run desktop:build
       - name: Current-format MCP acceptance
         env:
-          VAULT_EXE: src-tauri/target/release/local-password-manager.exe
+          VAULT_EXE: target/release/local-password-manager.exe
         run: |
           npm run verify:integration
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -89,7 +95,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vault-acceptance-failure-${{ github.sha }}
-          path: artifacts/*verification.json
+          path: |
+            artifacts/*verification.json
+            artifacts/regression/**
+            docs/evidence/*verification.json
           retention-days: 7
           if-no-files-found: ignore
       - name: Preserve short-lived build artifacts

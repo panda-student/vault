@@ -132,8 +132,23 @@ if($Action -eq 'Capture') {
   Start-Sleep -Milliseconds 100
  }
  if(@($held).Count -gt 0){throw 'Modifier keys are still held'}
- $element=[System.Windows.Automation.AutomationElement]::FocusedElement
- Write-Output (@{focused=([NativeWriteAudit]::GetForegroundWindow() -eq $handle);controlType=$element.Current.ControlType.ProgrammaticName;processId=$owner}|ConvertTo-Json -Compress)
+ # ISE can move focus to its module selector while finishing startup. A
+ # foreground window alone does not prove that the fixture editor has a caret.
+ $expectedEditorId=$editors[0].GetRuntimeId() -join ','
+ $editorFocused=$false
+ for($attempt=0;$attempt -lt 10;$attempt++){
+  $element=[System.Windows.Automation.AutomationElement]::FocusedElement
+  $editorFocused=($element.GetRuntimeId() -join ',') -eq $expectedEditorId
+  if($editorFocused){
+   Start-Sleep -Milliseconds 200
+   $element=[System.Windows.Automation.AutomationElement]::FocusedElement
+   $editorFocused=($element.GetRuntimeId() -join ',') -eq $expectedEditorId
+   if($editorFocused){break}
+  }
+  $editors[0].SetFocus()
+  Start-Sleep -Milliseconds 150
+ }
+ Write-Output (@{focused=($editorFocused -and [NativeWriteAudit]::GetForegroundWindow() -eq $handle);controlType=$element.Current.ControlType.ProgrammaticName;processId=$owner}|ConvertTo-Json -Compress)
 } elseif($Action -eq 'Save') {
  [NativeWriteAudit]::Shortcut(0x53)
  Start-Sleep -Milliseconds 400

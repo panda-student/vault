@@ -11,11 +11,11 @@ import assert from 'node:assert/strict';
 const run=promisify(execFile),pause=ms=>new Promise(r=>setTimeout(r,ms));
 const root=await realpath(await mkdtemp(join(tmpdir(),'vault-mcp-shared-')));
 const exe=join(root,'vault.exe'),data=join(root,'data');
-await copyFile(resolve(process.env.VAULT_EXE||'src-tauri/target/release/local-password-manager.exe'),exe);
+await copyFile(resolve(process.env.VAULT_EXE||'target/release/local-password-manager.exe'),exe);
 const clients=[],report={passed:false,root,executableSha256:createHash('sha256').update(await readFile(exe)).digest('hex'),checks:[]};
-let lock;
+let lock,pauseFlag;
 const check=(name,ok)=>{report.checks.push({name,passed:!!ok});assert.ok(ok,name);console.log('PASS',name);};
-async function connect(){const c=new Client({name:'shared-core-regression',version:'1'});const t=new StdioClientTransport({command:exe,args:['--mcp','--data-dir',data],stderr:'pipe'});await c.connect(t);c.transportFixture=t;clients.push(c);return c;}
+async function connect(){const c=new Client({name:'shared-core-regression',version:'1'});const t=new StdioClientTransport({command:exe,args:['--mcp','--data-dir',data],stderr:'pipe'});t.stderr?.resume();await c.connect(t);c.transportFixture=t;clients.push(c);return c;}
 const call=async(c,name,args={})=>{const r=await c.callTool({name,arguments:args});assert(!r.isError);return r.structuredContent??JSON.parse(r.content[0].text);};
 async function services(){const command="@(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq $env:VAULT_TEST_EXE -and $_.CommandLine.Contains('--backend') -and $_.CommandLine.Contains($env:VAULT_TEST_DIR) } | Select-Object -ExpandProperty ProcessId) | ConvertTo-Json -Compress";const r=await run('powershell.exe',['-NoProfile','-Command',command],{windowsHide:true,env:{...process.env,VAULT_TEST_EXE:exe,VAULT_TEST_DIR:data}});const v=JSON.parse(r.stdout.trim()||'[]');return Array.isArray(v)?v:[v];}
 async function resumed(c){const end=Date.now()+20000;while(Date.now()<end){try{if((await c.listTools()).tools.length===11)return;}catch{}await pause(100);}throw Error('Original MCP connection did not resume');}
@@ -28,6 +28,7 @@ try{
  const canonical='\\\\?\\'+await realpath(exe);
  const base=join(process.env.LOCALAPPDATA,'LocalPasswordManager','updates',createHash('sha256').update(canonical.toLowerCase()).digest('hex'));
  const token=randomUUID(),flag=join(base,'pause.json');
+ pauseFlag=flag;
  lock=spawn('python',['-c',"import sqlite3,sys,time; c=sqlite3.connect(sys.argv[1]); c.execute('BEGIN IMMEDIATE'); print('locked',flush=True); time.sleep(3); c.commit(); c.close()",join(data,'vault.db')],{windowsHide:true,stdio:['ignore','pipe','pipe']});
  await new Promise((res,rej)=>{lock.stdout.once('data',res);lock.once('error',rej);});
  const running=call(a,'create_entries',{kind:'password',title:'accepted before pause',secret:'FAKE_RUNNING_WRITE_3416'});
@@ -41,7 +42,12 @@ try{
  check('new-write-is-explicitly-rejected-during-pause',rejected);
  const committed=await running;check('accepted-write-completes-before-pause',!!committed.id);
  const end=Date.now()+12000;while(Date.now()<end){const files=await readdir(join(base,'bridges'));const values=await Promise.all(files.map(p=>readFile(join(base,'bridges',p,'paused'),'utf8').catch(()=>'')));if(values.length>=2&&values.every(v=>v===token))break;await pause(75);}
- check('shared-core-exits-after-all-connections-drain',(await services()).length===0);
+ // Bridge acknowledgement precedes the host's idle tick. Observe the actual
+ // host exit instead of assuming both events happen in the same instant.
+ const exitDeadline=Date.now()+15000;
+ let remaining=await services();
+ while(remaining.length&&Date.now()<exitDeadline){await pause(100);remaining=await services();}
+ check('shared-core-exits-after-all-connections-drain',remaining.length===0);
  await rename(exe,join(root,'previous.exe'));await copyFile(join(root,'previous.exe'),exe);
  await unlink(flag);
  await Promise.all([resumed(a),resumed(b)]);
@@ -52,4 +58,4 @@ try{
  await a.close();await resumed(b);check('closing-one-client-keeps-shared-core',JSON.stringify(await services())===JSON.stringify(next));
  report.passed=true;
 }catch(e){report.error=String(e);process.exitCode=1;console.error(report.error);}
-finally{for(const c of clients)await c.close().catch(()=>{});lock?.kill();await mkdir('artifacts',{recursive:true});await writeFile('artifacts/mcp-shared-verification.json',JSON.stringify(report,null,2)+'\n');}
+finally{for(const c of clients)await c.close().catch(()=>{});if(pauseFlag)await unlink(pauseFlag).catch(()=>{});lock?.kill();await mkdir('artifacts',{recursive:true});await writeFile('artifacts/mcp-shared-verification.json',JSON.stringify(report,null,2)+'\n');}
