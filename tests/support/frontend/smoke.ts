@@ -227,6 +227,16 @@ export async function runSmoke() {
       title: "Concurrent name",
     });
     await click('[data-nav="settings"]');
+    check(
+      "settings-no-longer-contains-updates",
+      !document.querySelector("#update-panel"),
+    );
+    await click('[data-nav="updates"]');
+    check(
+      "updates-is-a-top-level-page",
+      el("h1").textContent === "软件更新" &&
+        !!document.querySelector("#check-update"),
+    );
     await click('[data-nav="entries"]');
     await click(`[data-entry="${second.id}"] .entry-select`);
     await click("#save-entry");
@@ -374,6 +384,26 @@ export async function runSmoke() {
     await click("#mcp-toggle");
     await click('[data-nav="settings"]');
     await click("#tray-toggle");
+    for (const [width, height] of [
+      [900, 580],
+      [1120, 740],
+    ]) {
+      await testInvoke("smoke_resize", { width, height });
+      await click('[data-nav="updates"]');
+      const panel = el("#update-panel").getBoundingClientRect();
+      const action = el("#check-update").getBoundingClientRect();
+      check(
+        `updates-fits-${width}`,
+        action.right <= panel.right &&
+          action.left >= panel.left &&
+          document.documentElement.scrollWidth <= innerWidth,
+      );
+      check(
+        `updates-active-${width}`,
+        el('[data-nav="updates"]').classList.contains("active"),
+      );
+    }
+    await click('[data-nav="settings"]');
     check("tray-window-cycle", await testInvoke<boolean>("smoke_window_cycle"));
     await click("#tray-toggle");
     await testInvoke("finish_smoke", {

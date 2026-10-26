@@ -358,7 +358,8 @@ header p {
   line-height: 1.9;
   margin-top: 28px;
 }
-.settings {
+.settings,
+.updates-page {
   flex: 1;
   overflow: auto;
   padding: 30px;

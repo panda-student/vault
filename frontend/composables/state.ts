@@ -11,7 +11,9 @@ import type {
 } from "../types/models";
 import { protocolName } from "../utils/display";
 export function createVaultState() {
-  const page = ref<"entries" | "trash" | "settings" | "mcp">("entries");
+  const page = ref<"entries" | "trash" | "settings" | "mcp" | "updates">(
+    "entries",
+  );
   const tagFilter = ref(""),
     typeFilter = ref<Kind | "">("");
   const organization = ref<Organization>({ tags: [] }),
@@ -83,15 +85,17 @@ export function createVaultState() {
     entries.value.find((e) => e.id === selected.value),
   );
   const title = computed(() =>
-    page.value === "settings"
-      ? "设置"
-      : page.value === "mcp"
-        ? "MCP 管理"
-        : page.value === "trash"
-          ? "垃圾桶"
-          : tagFilter.value
-            ? "# " + tagFilter.value
-            : "全部凭据",
+    page.value === "updates"
+      ? "软件更新"
+      : page.value === "settings"
+        ? "设置"
+        : page.value === "mcp"
+          ? "MCP 管理"
+          : page.value === "trash"
+            ? "垃圾桶"
+            : tagFilter.value
+              ? "# " + tagFilter.value
+              : "全部凭据",
   );
   const config = computed(() =>
     info.value

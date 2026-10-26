@@ -60,6 +60,13 @@ defineEmits<{ organize: [kind: "tag", previous?: string] }>();
         ⌘ MCP 管理</button
       ><button
         class="nav"
+        :class="{ active: v.page === 'updates' }"
+        data-nav="updates"
+        @click="v.navigate('updates')"
+      >
+        ↻ 软件更新</button
+      ><button
+        class="nav"
         :class="{ active: v.page === 'settings' }"
         data-nav="settings"
         @click="v.navigate('settings')"

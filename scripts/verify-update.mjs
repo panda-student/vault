@@ -75,6 +75,8 @@ const status=()=>invoke('updates.status');
 async function waitPhase(phase){const end=Date.now()+30000;let current;while(Date.now()<end){current=await status();if(current.phase===phase)return current;await pause(100);}report.lastStatus=current;throw Error('Expected phase '+phase+'; actual '+JSON.stringify(current));}
 async function browser(...args){const result=await runBrowser(agent,['--session',session,'--cdp',String(port),...args],{windowsHide:true,timeout:30000,maxBuffer:2*1024*1024});return result.stdout;}
 async function click(selector){await browser('click',selector);await pause(150);}
+// A real upgrade can begin on an older client whose update panel is in Settings.
+async function openUpdates(){await click(await evaluate(`document.querySelector('[data-nav="updates"]') ? '[data-nav="updates"]' : '[data-nav="settings"]'`));}
 async function screenshot(name){await browser('screenshot',join(root,name+'.png'));}
 async function waitText(selector,text){const end=Date.now()+15000;while(Date.now()<end){if((await evaluate(`document.querySelector(${JSON.stringify(selector)})?.textContent||''`)).includes(text))return;await pause(100);}throw Error('Missing UI text: '+text);}
 async function mcp(){const c=new Client({name:'isolated-update-test',version:'1'});const transport=new StdioClientTransport({command:executable,args:['--mcp','--data-dir',data],env,stderr:'pipe'});await c.connect(transport);c.fixtureTransport=transport;return c;}
@@ -86,16 +88,16 @@ try{
  desktop.stderr.on('data',bytes=>{report.desktopDiagnostics=((report.desktopDiagnostics||'')+String(bytes)).slice(-2000);});
  await connect();
  client=await mcp();const created=await client.callTool({name:'create_entries',arguments:{kind:'password',title:'升级保留样例',account:'test-user',tags:['验收标签'],secret:'FAKE_UPDATE_SECRET_ONLY_6721'}});const entry=JSON.parse(created.content.find(c=>c.type==='text').text);const id=entry.id||entry.results?.[0]?.id;assert.ok(id);await client.close();client=null;
- await browser('snapshot','-i');await click('[data-nav="settings"]');
+ await browser('snapshot','-i');await openUpdates();
  await waitPhase('error');check('invalid-signature-rejected-before-download',(await status()).error.includes('签名'));await screenshot('01-invalid-signature');
  mode='offline';await click('#check-update');await waitPhase('error');check('network-failure-is-retryable',(await status()).error.includes('网络'));
  mode='valid';await click('#check-update');await waitPhase('available');check('signed-newer-version-discovered',(await status()).version===toVersion);
  await click('#download-update');await waitPhase('downloading');await click('#cancel-update');await waitPhase('error');check('download-cancellation-is-retryable',(await status()).error.includes('取消'));
  mode='corrupt';await click('#download-update');await waitPhase('error');check('corrupted-binary-rejected',(await status()).error.includes('校验'));check('failed-download-preserves-executable',createHash('sha256').update(await readFile(executable)).digest('hex')===report.fromSha256);
  mode='valid';await click('#download-update');await waitPhase('ready');check('download-verified-and-ready',(await status()).received===archive.length);await screenshot('02-ready');
- await click('[data-nav="entries"]');await browser('fill','#f-title','未保存草稿');await click('[data-nav="settings"]');await click('#install-update');await click('#cancel-install-update');check('confirmation-cancel-keeps-app',(await invoke('application.info')).version===fromVersion);
+ await click('[data-nav="entries"]');await browser('fill','#f-title','未保存草稿');await openUpdates();await click('#install-update');await click('#cancel-install-update');check('confirmation-cancel-keeps-app',(await invoke('application.info')).version===fromVersion);
  await click('#install-update');await click('#confirm-install-update');check('unsaved-draft-blocks-restart',(await evaluate("document.querySelector('#update-error')?.textContent||''")).includes('未保存'));await screenshot('03-draft-blocked');
- await click('[data-nav="entries"]');await click('#cancel-edit');await click('[data-nav="settings"]');
+ await click('[data-nav="entries"]');await click('#cancel-edit');await openUpdates();
  client=await mcp();client2=await mcp();
  const bridgePids=[client.fixtureTransport.pid,client2.fixtureTransport.pid];
  report.bridgePids=bridgePids;
@@ -113,7 +115,7 @@ try{
  check('client-facing-processes-preserved',client.fixtureTransport.pid===bridgePids[0]&&client2.fixtureTransport.pid===bridgePids[1]);
  check('existing-mcp-reads-saved-entry',!(await client.callTool({name:'get_entries',arguments:{id}})).isError);
  await browser('snapshot','-i');await screenshot('05-upgraded');
- const width=await evaluate('window.innerWidth');await cdp('Emulation.setDeviceMetricsOverride',{width:900,height:580,deviceScaleFactor:1,mobile:false});await click('[data-nav="settings"]');
+ const width=await evaluate('window.innerWidth');await cdp('Emulation.setDeviceMetricsOverride',{width:900,height:580,deviceScaleFactor:1,mobile:false});await openUpdates();
  check('update-actions-do-not-wrap-or-overflow-at-minimum-width',await evaluate("(()=>{const r=document.querySelector('#check-update').getBoundingClientRect(),p=document.querySelector('#update-panel').getBoundingClientRect();return r.right<=p.right&&r.left>=p.left&&document.documentElement.scrollWidth<=innerWidth})()"));await screenshot('06-minimum-width');await cdp('Emulation.clearDeviceMetricsOverride',{});
  // A correctly signed executable that immediately exits must roll back.
  const failingSource=join(root,'failed-start.rs'), failingBinary=join(root,'failed-start.exe');

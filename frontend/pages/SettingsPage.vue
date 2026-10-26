@@ -2,7 +2,6 @@
 import { toRefs, ref } from "vue";
 import type { UnwrapRef } from "vue";
 import type { VaultUI } from "../composables/useVault";
-import UpdatePanel from "../components/UpdatePanel.vue";
 import thirdPartyNotices from "../../THIRD_PARTY_NOTICES.txt?raw";
 const props = defineProps<{ v: UnwrapRef<VaultUI> }>();
 const { info, settingsSaving } = toRefs(props.v);
@@ -74,7 +73,6 @@ const licenses = ref<HTMLDialogElement | null>(null);
           </button>
         </div>
       </div>
-      <UpdatePanel :v="v" />
     </div>
     <dialog ref="licenses" class="licenses-dialog">
       <h2>第三方开源声明</h2>

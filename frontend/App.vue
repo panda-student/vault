@@ -6,6 +6,7 @@ import CredentialsPage from "./pages/CredentialsPage.vue";
 import TrashPage from "./pages/TrashPage.vue";
 import McpPage from "./pages/McpPage.vue";
 import SettingsPage from "./pages/SettingsPage.vue";
+import UpdatesPage from "./pages/UpdatesPage.vue";
 const state = useVault();
 const v = reactive(state);
 const { deleteDialog } = state;
@@ -84,6 +85,7 @@ async function saveOrganization() {
       />
       <TrashPage v-else-if="v.page === 'trash'" :v="v" />
       <McpPage v-else-if="v.page === 'mcp'" :v="v" />
+      <UpdatesPage v-else-if="v.page === 'updates'" :v="v" />
       <SettingsPage v-else :v="v" />
       <footer>
         <span
@@ -93,7 +95,7 @@ async function saveOrganization() {
           v-if="['available', 'ready'].includes(v.updater.status.phase)"
           class="text-btn"
           id="update-notice"
-          @click="v.navigate('settings')"
+          @click="v.navigate('updates')"
         >
           {{ v.updater.status.phase === "ready" ? "更新已就绪" : "发现新版本" }}
           · v{{ v.updater.status.version }}</button
