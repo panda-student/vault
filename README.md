@@ -83,7 +83,7 @@ AI 通过本应用的接口只能获得受控元数据与操作结果；本地�
 npm ci
 npm run desktop:dev
 npm run build
-cargo test --manifest-path src-tauri/Cargo.toml --no-default-features
+cargo test --workspace --locked
 npm run desktop:build
 node scripts/verify-next.mjs
 ```
@@ -94,19 +94,37 @@ node scripts/verify-next.mjs
 
 ## 代码结构
 
-- `src/components/`：侧栏、列表、凭据编辑器、垃圾桶、设置。
-- `src/useVault.ts`：界面状态、草稿与桌面调用。
-- `src-tauri/src/core.rs`：桌面和 MCP 共用的 Rust 应用服务；统一凭据读写、版本校验、垃圾桶和本地填写入口。
-- `src-tauri/src/core/interface.rs`：统一操作契约；两个适配器都使用绑定身份的 `CoreSession`。
-- `src-tauri/src/core/permissions.rs`：核心权限服务，统一计算默认、标签、单条例外以及固定禁止边界。
-- `src-tauri/src/core/storage.rs`、`filling.rs`、`windows.rs`：存储、填写与 Windows 能力服务。
-- `src-tauri/src/core/ai.rs`：AI 安全元数据投影，先脱敏再执行搜索筛选。
-- `src-tauri/src/vault/`：数据模型、组织方式、垃圾桶。
-- `vault.rs` / `crypto.rs`：加密存储与密钥保护。
-- `mcp.rs` / `ai_output.rs`：AI 接口及敏感输出过滤。
-- `core/filling/` / `core/windows/input.rs`：文件引用写入与原生焦点输入；`fill.rs` 定义输入协议类型。
+```text
+frontend/                  Vue 界面
+  pages/                   凭据、垃圾桶、MCP、设置页面
+  components/              表单、列表、权限矩阵等可复用视图
+  composables/             草稿、凭据操作、标签、权限、更新各自管理状态
+  api/                     唯一 Tauri IPC 客户端，使用 JSON-RPC 2.0
+  types/                   模型、方法名、响应和错误定义
+  utils/                   展示、表单转换、错误和 JSON 工具
+  styles/                  全局样式
+backend/                   独立 Rust 库，不依赖 Tauri
+  src/api/                 公共入口与统一 JSON-RPC 方法分发
+  src/definitions/         请求、响应、领域类型、操作和能力端口
+  src/services/            凭据、权限、填写和更新业务服务
+  src/data/                SQLite 仓储、事务和加密持久化
+  src/platform/            Windows 输入、进程、管道、启动及运行协调
+  src/adapters/mcp/        MCP 协议和 stdio 连接适配
+  src/common/              通用 JSON、路径和文件工具
+  src/bootstrap.rs         可信组装：把仓储和 Windows 实现注入业务服务
+src-tauri/                 Tauri 桌面壳
+  src/app/                 参数解析、共享宿主、窗口、托盘及剪贴板适配
+  src/commands/            单一 rpc 命令，只转发请求
+  src/testing/             显式隔离模式下的原生测试钩子
+  tauri.conf.json          桌面配置
+  Cargo.toml               仅依赖 Tauri 与后端公共能力
+tests/                    数据与核心回归、桌面烟测支持
+Cargo.toml                 Rust workspace，统一锁文件和 target
+```
 
-桌面命令与 MCP 均通过 `CoreSession.execute(Operation)` 调用业务能力。核心接口先检查权限，再调度存储、填写和 Windows 能力服务。桌面与所有 MCP 连接共用一个 Rust 后端宿主，身份隔离的会话共享同一份核心服务。MCP 连接桥不访问密码库；再次打开桌面只激活已有宿主，关闭窗口不打断已连接的 MCP。详见 [架构说明](docs/ARCHITECTURE.md)。
+桌面业务统一发送 `invoke("rpc", { request: { jsonrpc: "2.0", id, method, params } })`。MCP 保留标准 `tools/call`，工具名映射到同一业务方法分发器。调用身份由宿主绑定；权限检查、事务内对象授权和返回脱敏均由核心负责。业务服务依赖仓储与系统能力端口，具体实现只在 bootstrap 中组装。详见 [架构说明](docs/ARCHITECTURE.md) 与 [通信协议](docs/PROTOCOL.md)。
+
+`npm run verify:architecture` 检查依赖方向；`cargo test -p vault-backend --locked` 可独立验证后端；`cargo test --workspace --locked` 验证整个 Rust workspace。前端检查包含未使用变量；`npm run format:check` 与 `cargo fmt --all --check` 校验格式。
 
 在「MCP 管理 → 权限管理」中可分别允许或禁止 MCP 读取元数据、新增、修改、移入垃圾桶、窗口填写及文件写入，保存后后续调用立即受新规则约束。新密码库默认六组权限均开启。MCP 原文读取、权限修改和永久删除固定禁止，不能通过打开开关获得这些能力。
 
