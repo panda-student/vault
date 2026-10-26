@@ -1,5 +1,5 @@
 use tauri_plugin_clipboard_manager::ClipboardExt;
-use vault_backend::api::{AppError, ClipboardPort, Result};
+use vault_core::api::{AppError, ClipboardPort, Result};
 pub(super) struct DesktopClipboard(pub tauri::AppHandle);
 impl ClipboardPort for DesktopClipboard {
     fn write_text(&self, text: String) -> Result<()> {

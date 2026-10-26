@@ -4,7 +4,7 @@ Add-Type -AssemblyName System.Security
 $root = Split-Path -Parent $PSScriptRoot
 $keyDirectory = Join-Path $env:USERPROFILE '.codex\secrets\local-password-manager'
 $protectedPath = Join-Path $keyDirectory 'update-signing-key.dpapi'
-$publicPath = Join-Path $root 'backend\update-public-key.txt'
+$publicPath = Join-Path $root 'backend\updater\update-public-key.txt'
 New-Item -ItemType Directory -Path $keyDirectory -Force | Out-Null
 if (!(Test-Path -LiteralPath $protectedPath)) {
     if (Test-Path -LiteralPath $publicPath) { throw 'Public key already exists. Restore its private key rather than generating a different key.' }

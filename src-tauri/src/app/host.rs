@@ -15,8 +15,8 @@ use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::windows::named_pipe::ClientOptions,
 };
-use vault_backend::api::{AppError, CoreSession, Result};
-use vault_backend::bootstrap::{pipes as pipe, runtime as control};
+use vault_core::api::{AppError, CoreSession, Result};
+use vault_core::bootstrap::{pipes as pipe, runtime as control};
 
 pub struct Host {
     _lease: File,
@@ -206,7 +206,7 @@ async fn serve_mcp(
     _guard: ActiveConnection,
 ) {
     let (read, write) = tokio::io::split(connection);
-    let _ = vault_backend::adapters::mcp::serve_connection(core, read, write).await;
+    let _ = vault_mcp::serve_connection(core, read, write).await;
 }
 /// Desktop activation carries only visibility, never credential operations.
 async fn activate_desktop(

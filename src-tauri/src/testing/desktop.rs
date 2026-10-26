@@ -2,7 +2,7 @@ use crate::app::AppState;
 use std::sync::atomic::Ordering;
 use tauri::Manager;
 use tauri_plugin_clipboard_manager::ClipboardExt;
-use vault_backend::api::{AppError, CoreSession, Result};
+use vault_core::api::{AppError, CoreSession, Result};
 fn call(core: &CoreSession, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {
     let reply = core
         .handle_rpc(serde_json::json!({"jsonrpc":"2.0","id":1,"method":method,"params":params}))

@@ -2094,7 +2094,8 @@ dependencies = [
  "tauri-plugin-clipboard-manager",
  "tokio",
  "uuid",
- "vault-backend",
+ "vault-core",
+ "vault-mcp",
 ]
 
 [[package]]
@@ -4518,30 +4519,145 @@ dependencies = [
 ]
 
 [[package]]
-name = "vault-backend"
+name = "vault-common"
 version = "0.6.0"
 dependencies = [
- "aes-gcm",
- "base64 0.22.1",
- "ed25519-dalek",
- "flate2",
- "fs2",
- "getrandom 0.4.3",
- "percent-encoding",
- "reqwest 0.12.28",
- "rmcp",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "vault-contracts",
+]
+
+[[package]]
+name = "vault-contracts"
+version = "0.6.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "zeroize",
+]
+
+[[package]]
+name = "vault-core"
+version = "0.6.0"
+dependencies = [
  "rusqlite",
- "semver",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "vault-common",
+ "vault-contracts",
+ "vault-credentials",
+ "vault-filling",
+ "vault-permissions",
+ "vault-platform",
+ "vault-storage",
+ "vault-updater",
+]
+
+[[package]]
+name = "vault-credentials"
+version = "0.6.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+ "uuid",
+ "vault-contracts",
+ "zeroize",
+]
+
+[[package]]
+name = "vault-filling"
+version = "0.6.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+ "uuid",
+ "vault-contracts",
+ "zeroize",
+]
+
+[[package]]
+name = "vault-mcp"
+version = "0.6.0"
+dependencies = [
+ "fs2",
+ "rmcp",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "uuid",
+ "vault-contracts",
+ "vault-core",
+ "vault-platform",
+]
+
+[[package]]
+name = "vault-permissions"
+version = "0.6.0"
+dependencies = [
+ "base64 0.22.1",
+ "percent-encoding",
+ "serde_json",
+ "tempfile",
+ "vault-contracts",
+ "zeroize",
+]
+
+[[package]]
+name = "vault-platform"
+version = "0.6.0"
+dependencies = [
+ "fs2",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
  "tokio",
  "uuid",
+ "vault-common",
+ "vault-contracts",
  "windows",
- "windows-sys 0.61.2",
  "winreg",
  "zeroize",
+]
+
+[[package]]
+name = "vault-storage"
+version = "0.6.0"
+dependencies = [
+ "aes-gcm",
+ "getrandom 0.4.3",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "uuid",
+ "vault-contracts",
+ "windows-sys 0.61.2",
+ "zeroize",
+]
+
+[[package]]
+name = "vault-updater"
+version = "0.6.0"
+dependencies = [
+ "base64 0.22.1",
+ "ed25519-dalek",
+ "flate2",
+ "fs2",
+ "reqwest 0.12.28",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "uuid",
+ "vault-common",
+ "vault-contracts",
  "zip",
 ]
 

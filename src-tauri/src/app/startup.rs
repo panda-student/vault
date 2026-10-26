@@ -1,9 +1,19 @@
 use super::AppState;
 use super::host;
-use std::{path::PathBuf, sync::atomic::AtomicBool};
-use vault_backend::{adapters::mcp::bridge as mcp_bridge, bootstrap};
+use std::path::PathBuf;
+#[cfg(feature = "test-support")]
+use std::sync::atomic::AtomicBool;
+use vault_core::bootstrap;
+use vault_mcp::bridge as mcp_bridge;
 fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let bootstrap_args: Vec<_> = std::env::args_os().skip(1).collect();
+    if bootstrap_args.len() == 1 && bootstrap_args[0] == "--build-info" {
+        println!(
+            "{}",
+            serde_json::json!({"version":env!("CARGO_PKG_VERSION"),"testSupport":cfg!(feature="test-support")})
+        );
+        return Ok(());
+    }
     if bootstrap_args
         .first()
         .is_some_and(|arg| arg == "--installer-replace")
@@ -35,12 +45,15 @@ fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
         fixture_directory,
         update_health,
     } = super::launch::parse(bootstrap_args)?;
+    #[cfg(feature = "test-support")]
     if let Some(path) = fixture_directory {
         if is_mcp || report.is_some() || directory.is_some() || background {
             return Err("Fixture mode cannot be combined with other modes".into());
         }
         return crate::testing::input_fixture::run(path);
     }
+    #[cfg(not(feature = "test-support"))]
+    let _ = fixture_directory;
     if report.is_some() && directory.is_none() {
         return Err("--smoke-test requires an explicit --data-dir".into());
     }
@@ -96,6 +109,7 @@ fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
         AppState {
             core,
             smoke_report: report,
+            #[cfg(feature = "test-support")]
             smoke_finished: AtomicBool::new(false),
             update_health,
             backend,

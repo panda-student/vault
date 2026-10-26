@@ -9,6 +9,12 @@ function Get-Sha256([string]$Path) {
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $releaseBinary = Join-Path $projectRoot 'target\release\local-password-manager.exe'
 if (!(Test-Path -LiteralPath $releaseBinary)) { throw 'Run npm run desktop:build first.' }
+$previousExe = $env:VAULT_EXE
+try {
+    $env:VAULT_EXE = $releaseBinary
+    & node (Join-Path $PSScriptRoot 'verify-production.mjs')
+    if ($LASTEXITCODE -ne 0) { throw 'Refusing to package a test-support build.' }
+} finally { $env:VAULT_EXE = $previousExe }
 $version = (Get-Content -LiteralPath (Join-Path $projectRoot 'package.json') -Raw | ConvertFrom-Json).version
 $artifactRoot = if ($OutputDirectory) { [System.IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path $projectRoot 'artifacts' }
 $packageName = "vault-$version"

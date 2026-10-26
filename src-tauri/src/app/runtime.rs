@@ -1,7 +1,9 @@
 use super::AppState;
-use std::sync::{Arc, atomic::Ordering};
+use std::sync::Arc;
+#[cfg(feature = "test-support")]
+use std::sync::atomic::Ordering;
 use tauri::Manager;
-use vault_backend::api::DesktopMetadata;
+use vault_core::api::DesktopMetadata;
 pub(super) fn desktop(
     state: AppState,
     background: bool,
@@ -10,16 +12,20 @@ pub(super) fn desktop(
     if tauri::webview_version().is_err() {
         return Err("需要 Microsoft Edge WebView2 Runtime，请从 https://developer.microsoft.com/microsoft-edge/webview2/ 获取。".into());
     }
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
-        .manage(state)
-        .invoke_handler(tauri::generate_handler![
-            crate::commands::rpc,
-            crate::testing::desktop::smoke_clipboard,
-            crate::testing::desktop::smoke_window_cycle,
-            crate::testing::desktop::smoke_resize,
-            crate::testing::desktop::finish_smoke
-        ])
+        .manage(state);
+    #[cfg(feature = "test-support")]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        crate::commands::rpc,
+        crate::testing::desktop::smoke_clipboard,
+        crate::testing::desktop::smoke_window_cycle,
+        crate::testing::desktop::smoke_resize,
+        crate::testing::desktop::finish_smoke
+    ]);
+    #[cfg(not(feature = "test-support"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![crate::commands::rpc]);
+    builder
         .setup(move |app| {
             let result: std::result::Result<(), Box<dyn std::error::Error>> = (|| {
                 let state = app.state::<AppState>();
@@ -47,6 +53,7 @@ pub(super) fn desktop(
                 if let Some((path, token)) = &state.update_health {
                     std::fs::write(path, token)?;
                 }
+                #[cfg(feature = "test-support")]
                 if is_smoke {
                     let handle = app.handle().clone();
                     std::thread::spawn(move || {

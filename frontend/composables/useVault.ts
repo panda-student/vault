@@ -99,7 +99,7 @@ export function useVault() {
     try {
       info.value = await invoke<Info>("application.info");
       await refresh();
-      if (info.value.smokeTest) {
+      if (import.meta.env.MODE === "test" && info.value.smokeTest) {
         const { runSmoke } = await import("../../tests/support/frontend/smoke");
         await runSmoke();
       } else {

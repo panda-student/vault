@@ -1,0 +1,22 @@
+{
+  "vault-contracts": [],
+  "vault-common": ["vault-contracts"],
+  "vault-credentials": ["vault-contracts"],
+  "vault-permissions": ["vault-contracts"],
+  "vault-filling": ["vault-contracts"],
+  "vault-storage": ["vault-contracts"],
+  "vault-platform": ["vault-contracts", "vault-common"],
+  "vault-updater": ["vault-contracts", "vault-common"],
+  "vault-core": [
+    "vault-contracts",
+    "vault-common",
+    "vault-credentials",
+    "vault-permissions",
+    "vault-filling",
+    "vault-storage",
+    "vault-platform",
+    "vault-updater"
+  ],
+  "vault-mcp": ["vault-contracts", "vault-core", "vault-platform"],
+  "local-password-manager": ["vault-core", "vault-mcp"]
+}

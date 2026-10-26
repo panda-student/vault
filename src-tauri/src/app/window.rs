@@ -1,6 +1,6 @@
 use super::AppState;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
-use vault_backend::api::DesktopMetadata;
+use vault_core::api::DesktopMetadata;
 pub(crate) fn open_main(
     app: &tauri::AppHandle,
     visible: bool,

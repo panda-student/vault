@@ -82,6 +82,7 @@ try{
  check('deleted-tag-is-not-found',missingTag.failed&&missingTag.value.code==='NOT_FOUND');
  check('all-ai-output-excludes-original-and-base64',outputs.every(o=>!o.includes(secret)&&!o.includes(Buffer.from(secret).toString('base64'))));
  await client.close();
+ if(process.env.VAULT_MCP_ONLY!=='1'){
  // Isolated desktop fixture: no real data, no display of protected values in reports.
  const smokePath=join(root,'desktop-smoke.json');
  desktop=spawn(executable,['--data-dir',join(root,'desktop-data'),'--smoke-test',smokePath],{windowsHide:true,stdio:'ignore'});
@@ -92,6 +93,7 @@ try{
  report.desktop=JSON.parse(await readFile(smokePath,'utf8'));
  check('native-desktop-suite',closed[0]===0&&report.desktop.passed);
  report.nativeTrash=JSON.parse((await readFile(dialogReport,'utf8')).replace(/^\uFEFF/,''));check('native-human-confirmation-cancel-and-confirm',report.nativeTrash.passed);
+ }else{report.desktopSkipped=true;}
  report.executableSha256=createHash('sha256').update(await readFile(executable)).digest('hex');
  report.passed=true;
 }catch(e){report.error=String(e);process.exitCode=1;console.error(report.error);}

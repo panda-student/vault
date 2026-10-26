@@ -18,8 +18,9 @@ const checks=[];
 try{
  await phase('Install');installed=true;
  const fixture=await readReport(),executable=join(fixture.directory,'vault.exe');
- const acceptance=await run(process.execPath,['scripts/verify-next.mjs'],{windowsHide:true,timeout:180000,env:{...process.env,VAULT_EXE:executable},maxBuffer:1024*1024});
- console.log(acceptance.stdout.trim());checks.push({name:'installed-mcp-and-native-desktop',passed:true});
+ const isolation=await run(process.execPath,['scripts/verify-production.mjs'],{windowsHide:true,timeout:90000,env:{...process.env,VAULT_EXE:executable,VAULT_MCP_ONLY:'1'}});console.log(isolation.stdout.trim());
+ const acceptance=await run(process.execPath,['scripts/verify-next.mjs'],{windowsHide:true,timeout:180000,env:{...process.env,VAULT_EXE:executable,VAULT_MCP_ONLY:'1'},maxBuffer:1024*1024});
+ console.log(acceptance.stdout.trim());checks.push({name:'installed-production-build-and-mcp',passed:true});
  async function connect(){
   client=new Client({name:'installer-preservation',version:'1'});
   const transport=new StdioClientTransport({command:executable,args:['--mcp'],stderr:'pipe'});transport.stderr?.resume();await client.connect(transport);

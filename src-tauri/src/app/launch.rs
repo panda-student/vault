@@ -13,8 +13,10 @@ pub(super) fn parse(values: Vec<OsString>) -> Result<LaunchOptions, Box<dyn std:
     let mut is_mcp = false;
     let mut backend_mode = false;
     let mut directory = None;
+    #[allow(unused_mut)]
     let mut report = None;
     let mut background = false;
+    #[allow(unused_mut)]
     let mut fixture_directory = None;
     let mut update_health = None;
     let mut args = values.into_iter();
@@ -39,12 +41,14 @@ pub(super) fn parse(values: Vec<OsString>) -> Result<LaunchOptions, Box<dyn std:
                     args.next().ok_or("--data-dir requires a path")?,
                 ))
             }
+            #[cfg(feature = "test-support")]
             Some("--smoke-test") => {
                 report = Some(PathBuf::from(
                     args.next().ok_or("--smoke-test requires a path")?,
                 ))
             }
             Some("--background") => background = true,
+            #[cfg(feature = "test-support")]
             Some("--fill-fixture") => {
                 fixture_directory = Some(PathBuf::from(
                     args.next().ok_or("--fill-fixture requires a directory")?,

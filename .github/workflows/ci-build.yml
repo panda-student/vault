@@ -51,11 +51,11 @@ jobs:
         run: |
           cargo metadata --locked --format-version 1 --filter-platform x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml | Set-Content -Encoding utf8NoBOM target/dependency-metadata.json
           node scripts/generate-notices.mjs
-      - name: Desktop build
-        run: npm run desktop:build
+      - name: Test-only desktop build
+        run: node scripts/build-test.mjs --release
       - name: Current-format MCP acceptance
         env:
-          VAULT_EXE: target/release/local-password-manager.exe
+          VAULT_EXE: artifacts/test-build/vault.exe
         run: |
           npm run verify:integration
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -63,6 +63,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/verify-mcp-handoff.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Production desktop build
+        run: npm run desktop:build
+      - name: Reject test support in distribution
+        run: node scripts/verify-production.mjs
       - name: Package portable build
         run: npm run package:portable
       - name: Package installer

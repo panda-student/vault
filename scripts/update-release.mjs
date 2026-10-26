@@ -1,12 +1,16 @@
 // Signed, version-bound update metadata. Private keys are never written to the repository.
 import { generateKeyPairSync, createPrivateKey, createPublicKey, sign, verify, createHash } from 'node:crypto';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import assert from 'node:assert/strict';
 
 const [command, ...args] = process.argv.slice(2);
 if (command === 'validate') {
-  assert.equal((await readFile('backend/Cargo.toml','utf8')).match(/^version = "([^"]+)"/m)?.[1], JSON.parse(await readFile('package.json','utf8')).version);
+  for (const entry of await readdir('backend',{withFileTypes:true})) {
+    if(!entry.isDirectory())continue;
+    let manifest;try{manifest=await readFile(`backend/${entry.name}/Cargo.toml`,'utf8');}catch(error){if(error.code==='ENOENT')continue;throw error;}
+    assert.equal(manifest.match(/^version = "([^"]+)"/m)?.[1],JSON.parse(await readFile('package.json','utf8')).version,entry.name);
+  }
   const version = JSON.parse(await readFile('package.json', 'utf8')).version;
   assert.equal((await readFile('src-tauri/Cargo.toml','utf8')).match(/^version = "([^"]+)"/m)?.[1], version);
   assert.equal(JSON.parse(await readFile('src-tauri/tauri.conf.json','utf8')).version, version);
@@ -14,7 +18,7 @@ if (command === 'validate') {
     assert.match(version, /^\d+\.\d+\.\d+$/, 'Stable release tags require a stable version');
     assert.equal(process.env.GITHUB_REF_NAME, `v${version}`);
   }
-  assert.equal(Buffer.from((await readFile('backend/update-public-key.txt','utf8')).trim(),'base64').length,32);
+  assert.equal(Buffer.from((await readFile('backend/updater/update-public-key.txt','utf8')).trim(),'base64').length,32);
 } else if (command === 'keygen') {
   const [publicPath, privatePath] = args.map(p => resolve(p));
   if (!publicPath || !privatePath) throw Error('keygen <public-file> <private-file>');
@@ -33,7 +37,7 @@ if (command === 'validate') {
   assert.equal(JSON.parse(await readFile('src-tauri/tauri.conf.json', 'utf8')).version, version);
   const bytes = await readFile(binary);
   const privateKey = createPrivateKey({ key: Buffer.from(process.env.VAULT_UPDATE_SIGNING_KEY || '', 'base64'), format: 'der', type: 'pkcs8' });
-  const raw = (await readFile('backend/update-public-key.txt', 'utf8')).trim();
+  const raw = (await readFile('backend/updater/update-public-key.txt', 'utf8')).trim();
   const expected = createPublicKey(privateKey).export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64');
   assert.equal(expected, raw, 'Signing key does not match the embedded public key');
   const archive = await readFile(resolve(dirname(binary), `../vault-${version}.zip`));
