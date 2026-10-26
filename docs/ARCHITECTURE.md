@@ -1,75 +1,53 @@
 # 当前代码架构
 
-目录和依赖边界均对应实际实现，由 `scripts/verify-architecture.mjs` 在 CI 中检查。Rust workspace 包含独立的 `vault-backend` 库与 `local-password-manager` Tauri 壳，共用根目录 Cargo.lock 与 target。后端不依赖 Tauri，业务服务不导入 SQLite、Windows 实现或平台模块。
+后端按独立 Cargo crate 管理，核心编排跨模块操作。Tauri 与 MCP 是入口适配器，均调用同一个宿主内的 CoreSession；模块不是额外进程。
 
 ```mermaid
 flowchart TD
-  UI[frontend / Vue 页面]
-  AI[AI 客户端]
-  Bridge[独立 stdio 连接适配进程]
-  DB[(schema 4 加密 SQLite 文件)]
-  subgraph Host[唯一后端宿主进程 / 相同 EXE 和数据目录]
-    IPC[Tauri rpc 适配器]
-    subgraph Backend[vault-backend / Rust 后端实例]
-      MCP[MCP tools/call 适配]
-      RPC[api/rpc 统一方法入口]
-      Contracts[definitions / DTO、身份、操作与端口]
-      subgraph Services[services / 业务逻辑]
-        Session[CoreSession / 绑定身份与执行门]
-        Policy[permissions / 授权与输出保护]
-        Dispatch[已授权操作分发]
-        Credentials[credentials / 凭据业务]
-        Filling[filling / 本地填写编排]
-        Updates[updates / 签名、下载和安装编排]
-      end
-      subgraph Data[data / 数据实现]
-        Repo[SQLite 仓储、连接与事务]
-        Encryption[AES-256-GCM / DPAPI]
-      end
-      Windows[platform / Windows 原生能力与运行协调]
+  UI[Vue 前端] --> Tauri[Tauri rpc 适配器]
+  AI[AI 客户端] --> Bridge[stdio 连接桥]
+  subgraph Host[共享宿主进程]
+    Tauri --> Core
+    Bridge --> MCP[MCP 协议适配器]
+    MCP --> Core
+    subgraph Rust[Rust 后端]
+      Core[core：JSON-RPC / 会话鉴权 / 工作流编排]
+      Core --> Permission[permissions：策略和输出保护]
+      Core --> Credential[credentials：凭据业务]
+      Core --> Filling[filling：字段解析和填写]
+      Core --> Update[updater：签名验证和更新]
+      Core --> Platform[platform：Windows 能力和运行协调]
+      Credential -. 仓储接口 .-> Storage[storage：SQLite 事务和加密]
+      Filling -. 延迟读取接口 .-> Credential
+      Filling -. 系统接口 .-> Platform
+      Update -. 系统接口 .-> Platform
     end
   end
-  UI --> IPC
-  AI --> Bridge --> MCP
-  IPC --> RPC
-  MCP --> RPC
-  RPC --> Session
-  RPC -. 使用契约 .-> Contracts
-  Session --> Policy
-  Session --> Dispatch
-  Dispatch --> Credentials
-  Dispatch --> Filling
-  Dispatch --> Updates
-  Dispatch --> Windows
-  Filling --> Credentials
-  Filling --> Windows
-  Updates --> Windows
-  Credentials -. 仓储端口、bootstrap 注入 .-> Repo
-  Repo --> Encryption
-  Repo --> DB
+  Storage --> DB[(本地加密密码库)]
 ```
 
+实线为编排调用，虚线为通过 contracts 中接口的运行时调用；虚线不代表两个功能 crate 直接依赖。core/bootstrap 注入具体实现。所有模块的可编译依赖由 `backend/architecture.json` 和 `npm run verify:architecture` 检查。
 
-箭头表示调用或依赖；仓储和系统能力的具体实现只在 `bootstrap.rs` 注入。definitions 定义领域模型、DTO、错误、内部操作和端口，其他层依赖这些定义。仓储持有一个受互斥锁保护的 SQLite 连接，连接与事务生命周期由数据层统一管理，避免并行 RPC 反复开关连接触发 Windows WAL 文件锁协议错误。数据层不依赖业务服务；服务传入 MutationPolicy，仓储在写事务中用最新设置调用策略，避免授权和写入之间发生策略变化。Windows 层不依赖凭据仓储，输入方法只接收延迟解析回调。
-
-| 模块 | 责任与入口 |
+| 目录 | 职责 |
 | --- | --- |
-| frontend/pages | 页面组成；凭据、垃圾桶、MCP 和设置独立 |
-| frontend/composables | 草稿生命周期、凭据操作、标签、权限预览和更新各自维护 |
-| frontend/api | JSON-RPC 请求和响应校验，唯一生产 Tauri IPC 调用点 |
-| src-tauri/src/app | 参数、唯一宿主、窗口、托盘、剪贴板与健康标记 |
-| src-tauri/src/commands | 只把请求转交 CoreSession，不编写业务逻辑 |
-| backend/src/api | 公共后端契约、JSON-RPC 批量/通知/错误处理、方法参数解析 |
-| backend/src/definitions | 领域类型、请求响应、权限身份与仓储/系统端口 |
-| backend/src/services | 会话执行门、授权与脱敏；凭据、填写、权限、更新用例 |
-| backend/src/data | SQL、版本/事务、标签/垃圾桶、加密记录和密钥持久化 |
-| backend/src/platform | UIA/SendInput、原子替换、进程、命名管道和更新暂停协调 |
-| backend/src/adapters/mcp | 工具发现/参数映射、安全协议出口及保留连接的 stdio 桥 |
-| backend/src/common | JSON 编码、规范路径、文件移动工具，不放凭据策略 |
+| frontend | 页面、交互状态、统一 RPC 客户端 |
+| src-tauri | 窗口、托盘、启动和 IPC 适配，不实现凭据业务 |
+| backend/core | 对外操作入口、身份绑定、执行门、跨模块工作流与依赖组装 |
+| backend/contracts | DTO、错误、权限身份、操作和模块接口定义 |
+| backend/credentials | 凭据校验、修改合并、批量业务策略 |
+| backend/permissions | 默认/标签/凭据权限、事务授权策略、输出保护 |
+| backend/filling | 凭据字段解析、文件模板和窗口填写用例 |
+| backend/storage | SQLite 连接和事务、加密记录、标签和垃圾桶持久化 |
+| backend/platform | UIA、SendInput、文件替换、进程、命名管道和暂停协调 |
+| backend/updater | 更新元数据、签名、下载、健康检查、回退和安装编排 |
+| backend/mcp | MCP 工具协议、参数适配、安全输出和 stdio 桥 |
+| backend/common | JSON、路径、文件工具；不放业务策略 |
 
-同一用户、同一 EXE、同一规范化数据目录仅组装一份核心。MCP 和桌面持有不同身份的 CoreSession，底层 Arc 服务、执行门、填写目标和输出保护状态共享。MCP 的 stdio 连接进程只是协议通道，不打开密码库。MCP 先启动时宿主无 WebView；后续桌面启动激活同一宿主。框架生命周期由 Tauri 壳管理，不能将后端库“不依赖 Tauri”理解为当前生产宿主完全不使用 Tauri。
+同一用户、EXE 和规范化数据目录共享一份后端。桌面与 MCP 使用不同身份的会话，但共享服务、执行门、输入目标和输出保护。连接桥不打开密码库。宿主生命周期由 Tauri 壳管理。
 
-权限检查保留每次操作鉴权，不只在连接时检查。公开 API 不暴露原始 Operation 调用，适配器不能选择调用身份。完整载荷规则见 [通信协议](PROTOCOL.md)。
+权限在每次操作执行时检查，不只在连接时检查。写入时仓储在事务中用最新设置重新执行注入的授权策略。SQLite 连接由 storage 长期持有并串行保护；填写目标检查后才调用延迟解析回调读取秘密。MCP 出口保护保留，不能读取明文或永久删除。
+
+模块规则和测试归属见 [后端架构规则](../backend/ARCHITECTURE.md)，通信载荷见 [协议](PROTOCOL.md)。
 
 ## 六组 MCP 权限
 

@@ -1,6 +1,6 @@
 # 通信协议
 
-桌面业务入口只有 Tauri `rpc` 命令，载荷为 JSON-RPC 2.0；业务模块不直接调用 Tauri。`frontend/api/desktop.ts` 生成递增 ID、检查响应 ID/版本，并把后端业务错误交给界面显示。类型定义在 `frontend/types/`，Rust 定义在 `backend/src/definitions/`。
+桌面业务入口只有 Tauri `rpc` 命令，载荷为 JSON-RPC 2.0；业务模块不直接调用 Tauri。`frontend/api/desktop.ts` 生成递增 ID、检查响应 ID/版本，并把后端业务错误交给界面显示。类型定义在 `frontend/types/`，Rust 定义在 `backend/contracts/src/`。
 
 ```json
 {"jsonrpc":"2.0","id":12,"method":"credentials.get","params":{"id":"credential-id"}}

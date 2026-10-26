@@ -103,28 +103,30 @@ frontend/                  Vue 界面
   types/                   模型、方法名、响应和错误定义
   utils/                   展示、表单转换、错误和 JSON 工具
   styles/                  全局样式
-backend/                   独立 Rust 库，不依赖 Tauri
-  src/api/                 公共入口与统一 JSON-RPC 方法分发
-  src/definitions/         请求、响应、领域类型、操作和能力端口
-  src/services/            凭据、权限、填写和更新业务服务
-  src/data/                SQLite 仓储、事务和加密持久化
-  src/platform/            Windows 输入、进程、管道、启动及运行协调
-  src/adapters/mcp/        MCP 协议和 stdio 连接适配
-  src/common/              通用 JSON、路径和文件工具
-  src/bootstrap.rs         可信组装：把仓储和 Windows 实现注入业务服务
+backend/                   独立 Rust 功能 crates，不依赖 Tauri
+  core/                    统一入口、权限执行门、工作流和依赖组装
+  contracts/               DTO、错误、操作及模块接口
+  credentials/             凭据校验和批量业务
+  permissions/             权限策略和输出保护
+  filling/                 字段解析、文件及窗口填写用例
+  storage/                 SQLite 事务和加密持久化
+  updater/                 签名、下载、健康检查及回退
+  platform/                Windows 输入、进程、管道和运行协调
+  mcp/                     MCP 协议与 stdio 连接适配
+  common/                  通用 JSON、路径和文件工具
 src-tauri/                 Tauri 桌面壳
   src/app/                 参数解析、共享宿主、窗口、托盘及剪贴板适配
   src/commands/            单一 rpc 命令，只转发请求
   src/testing/             显式隔离模式下的原生测试钩子
   tauri.conf.json          桌面配置
   Cargo.toml               仅依赖 Tauri 与后端公共能力
-tests/                    数据与核心回归、桌面烟测支持
+tests/                     桌面烟测支持；Rust 测试在所属模块内
 Cargo.toml                 Rust workspace，统一锁文件和 target
 ```
 
 桌面业务统一发送 `invoke("rpc", { request: { jsonrpc: "2.0", id, method, params } })`。MCP 保留标准 `tools/call`，工具名映射到同一业务方法分发器。调用身份由宿主绑定；权限检查、事务内对象授权和返回脱敏均由核心负责。业务服务依赖仓储与系统能力端口，具体实现只在 bootstrap 中组装。详见 [架构说明](docs/ARCHITECTURE.md) 与 [通信协议](docs/PROTOCOL.md)。
 
-`npm run verify:architecture` 检查依赖方向；`cargo test -p vault-backend --locked` 可独立验证后端；`cargo test --workspace --locked` 验证整个 Rust workspace。前端检查包含未使用变量；`npm run format:check` 与 `cargo fmt --all --check` 校验格式。
+`npm run verify:architecture` 检查依赖方向；`cargo test -p vault-core --locked` 可独立验证后端；`cargo test --workspace --locked` 验证整个 Rust workspace。前端检查包含未使用变量；`npm run format:check` 与 `cargo fmt --all --check` 校验格式。
 
 在「MCP 管理 → 权限管理」中可分别允许或禁止 MCP 读取元数据、新增、修改、移入垃圾桶、窗口填写及文件写入，保存后后续调用立即受新规则约束。新密码库默认六组权限均开启。MCP 原文读取、权限修改和永久删除固定禁止，不能通过打开开关获得这些能力。
 
@@ -139,3 +141,5 @@ Cargo.toml                 Rust workspace，统一锁文件和 target
 可在「设置 → 软件更新」检查、下载和重启更新。启动自动检查，更新包经 Ed25519 签名及 SHA-256 校验，不替换 data。重启前请保存草稿。桌面与多个 MCP 连接共享一个后台核心；更新等待当前请求完成、暂停核心并自动恢复，原客户端连接保留，不重放写请求。
 
 推送 main 后自动生成预发行下载附件；推送与版本一致的 v* 标签后自动生成正式 Release 和稳定更新描述。维护与验收细节见 [在线更新文档](docs/UPDATES.md)。
+
+测试专用桌面程序用 `npm run desktop:test` 构建，输出 `artifacts/test-build/vault.exe`。发布用 `npm run desktop:build`，不启用 `test-support`。模块规则见 [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md)。
