@@ -2084,7 +2084,7 @@ checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 
 [[package]]
 name = "local-password-manager"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "fs2",
  "serde",
@@ -4520,7 +4520,7 @@ dependencies = [
 
 [[package]]
 name = "vault-common"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -4531,7 +4531,7 @@ dependencies = [
 
 [[package]]
 name = "vault-contracts"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -4541,7 +4541,7 @@ dependencies = [
 
 [[package]]
 name = "vault-core"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "rusqlite",
  "serde",
@@ -4559,7 +4559,7 @@ dependencies = [
 
 [[package]]
 name = "vault-credentials"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -4570,7 +4570,7 @@ dependencies = [
 
 [[package]]
 name = "vault-filling"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -4581,7 +4581,7 @@ dependencies = [
 
 [[package]]
 name = "vault-mcp"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "fs2",
  "rmcp",
@@ -4596,7 +4596,7 @@ dependencies = [
 
 [[package]]
 name = "vault-permissions"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "base64 0.22.1",
  "percent-encoding",
@@ -4608,7 +4608,7 @@ dependencies = [
 
 [[package]]
 name = "vault-platform"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "fs2",
  "reqwest 0.12.28",
@@ -4627,7 +4627,7 @@ dependencies = [
 
 [[package]]
 name = "vault-storage"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "aes-gcm",
  "getrandom 0.4.3",
@@ -4643,7 +4643,7 @@ dependencies = [
 
 [[package]]
 name = "vault-updater"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
