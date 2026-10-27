@@ -67,6 +67,13 @@ impl Worker {
         std::fs::create_dir_all(&state)?;
         let until = tokio::time::Instant::now() + Duration::from_secs(15);
         let mut last_launch = tokio::time::Instant::now() - Duration::from_secs(2);
+        let startup = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(state.join("startup.lock"))?;
+        let mut starting = false;
         let connection = loop {
             if control::active(&base).is_some() {
                 return Err(std::io::Error::other("Update in progress"));
@@ -75,17 +82,13 @@ impl Worker {
                 pipe::verify_server(&connection)?;
                 break connection;
             }
-            // Serialize startup across all connection bridges. A live service lease
-            // prevents duplicate cores even if multiple clients connect concurrently.
-            let startup = OpenOptions::new()
-                .create(true)
-                .truncate(false)
-                .read(true)
-                .write(true)
-                .open(state.join("startup.lock"))?;
-            if last_launch.elapsed() > Duration::from_secs(1)
-                && startup.try_lock_exclusive().is_ok()
-            {
+            // Serialize startup across all connection bridges. The startup lock stays
+            // held until the pipe accepts connections so a concurrent bridge cannot
+            // spawn a second core during the launch window.
+            if !starting {
+                starting = startup.try_lock_exclusive().is_ok();
+            }
+            if starting && last_launch.elapsed() > Duration::from_secs(1) {
                 let lease = OpenOptions::new()
                     .create(true)
                     .truncate(false)
@@ -105,15 +108,14 @@ impl Worker {
                     drop(lease);
                     command.spawn()?;
                     last_launch = tokio::time::Instant::now();
-                    tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             }
-            drop(startup);
             if tokio::time::Instant::now() >= until {
                 return Err(std::io::Error::other("Shared core did not become ready"));
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         };
+        drop(startup);
         let (output, input) = tokio::io::split(connection);
         let task = tokio::spawn(reader(output, sender, Some(generation)));
         let mut worker = Self {
