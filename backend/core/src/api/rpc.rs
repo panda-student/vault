@@ -214,6 +214,15 @@ pub(crate) fn dispatch(core: &CoreSession, name: &str, value: Value) -> Result<V
                 enabled: args.enabled,
             })
         }
+        "transfer.export" => core.execute(Operation::Export(arguments(value)?)),
+        "transfer.inspect" => core.execute(Operation::InspectExport(arguments(value)?)),
+        "transfer.import" => core.execute(Operation::Import(arguments(value)?)),
+        "transfer.pending" => {
+            let _: EmptyArgs = arguments(value)?;
+            core.execute(Operation::TransferPending)
+        }
+        "transfer.respond" => core.execute(Operation::TransferRespond(arguments(value)?)),
+        "transfer.mcpExport" => core.execute(Operation::McpExport(arguments(value)?)),
         "updates.status" => {
             let _: EmptyArgs = arguments(value)?;
             core.execute(Operation::UpdateStatus)

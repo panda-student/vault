@@ -337,6 +337,8 @@ pub fn access(op: &Operation) -> Access {
             }
         }
         Operation::CaptureTarget(_) => Access::Input,
+        // Encrypted-only export through the desktop passphrase handshake.
+        Operation::McpExport(_) => Access::File,
         _ => Access::DesktopOnly,
     }
 }
@@ -348,6 +350,7 @@ pub fn tool_access(name: &str, _s: &Settings) -> Option<Access> {
         "update_entries" | "restore_entries" | "pin_entries" | "organize" => Access::Update,
         "delete_entries" => Access::Delete,
         "capture_fill_target" | "write_credential" => Access::Input,
+        "export_entries" => Access::File,
         _ => return None,
     })
 }

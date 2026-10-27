@@ -4,6 +4,7 @@ mod repositories;
 mod settings;
 mod sqlite;
 mod tags;
+mod transfer;
 mod trash;
 use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior, params};
 use sqlite::record::{COLUMNS, KEY_AAD, Row, from_sql};

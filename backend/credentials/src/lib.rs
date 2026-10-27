@@ -40,6 +40,24 @@ impl CredentialService {
             .create_many(input, &policy::CredentialPolicy { authorization })
     }
 
+    pub fn export_entries(&self, include_trash: bool) -> Result<Vec<EntryInput>> {
+        self.repository.export_entries(include_trash)
+    }
+
+    /// Normalize one imported candidate so the caller can report its file row.
+    pub fn prepare_import(&self, value: &mut EntryInput) -> Result<()> {
+        validation::prepare(value)
+    }
+
+    pub fn import_many(
+        &self,
+        input: Vec<EntryInput>,
+        authorization: &dyn ChangeAuthorizer,
+    ) -> Result<Vec<EntrySummary>> {
+        self.repository
+            .import_many(input, &policy::CredentialPolicy { authorization })
+    }
+
     pub fn update_many(
         &self,
         patches: Vec<EntryPatch>,

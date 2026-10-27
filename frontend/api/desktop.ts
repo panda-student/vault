@@ -1,4 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { downloadDir, join } from "@tauri-apps/api/path";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import type {
   RpcRequest,
   RpcResponse,
@@ -29,3 +31,25 @@ export async function request<T>(
   return reply.result;
 }
 export const invoke = request;
+/** Only file selection uses the OS dialog; every other surface stays in Vue. */
+export async function pickExportPath(name: string): Promise<string | null> {
+  let defaultPath = name;
+  try {
+    defaultPath = await join(await downloadDir(), name);
+  } catch {
+    /* Fall back to the dialog's remembered folder. */
+  }
+  const extension = name.slice(name.lastIndexOf(".") + 1);
+  return save({
+    defaultPath,
+    filters: [{ name: "凭据导出文件", extensions: [extension] }],
+  });
+}
+export async function pickImportPath(): Promise<string | null> {
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    filters: [{ name: "凭据文件", extensions: ["json", "csv", "vaultenc"] }],
+  });
+  return typeof selected === "string" ? selected : null;
+}

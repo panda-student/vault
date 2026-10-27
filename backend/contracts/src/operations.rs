@@ -1,6 +1,9 @@
 //! Transport-neutral operation contract. Caller identity is never deserialized.
 use super::errors::Result;
 use super::{
+    contracts::{
+        ExportArgs, McpExportArgs, TransferImportArgs, TransferPathArgs, TransferRespondArgs,
+    },
     credentials::{EntryInput, EntryPatch, EntryVersion, Kind, Settings},
     filling::CaptureRequest,
     write::WriteArgs,
@@ -83,4 +86,13 @@ pub enum Operation {
     },
     CaptureTarget(CaptureRequest),
     Write(WriteArgs),
+    /// Desktop-only file export; MCP can never choose a path or receive content.
+    Export(ExportArgs),
+    InspectExport(TransferPathArgs),
+    /// Desktop-only all-or-nothing import.
+    Import(TransferImportArgs),
+    TransferPending,
+    TransferRespond(TransferRespondArgs),
+    /// MCP asks the on-screen user for a passphrase; the caller receives status only.
+    McpExport(McpExportArgs),
 }

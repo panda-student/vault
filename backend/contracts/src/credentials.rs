@@ -53,7 +53,7 @@ impl EntrySummary {
         ))
     }
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EntryInput {
     pub kind: Kind,

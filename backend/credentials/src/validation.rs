@@ -44,6 +44,22 @@ pub(crate) fn normalize_services(value: &mut EntryInput) -> Result<()> {
     }
     Ok(())
 }
+/// Canonical entry preparation shared by the write policy and import preflight.
+pub(crate) fn prepare(value: &mut EntryInput) -> Result<()> {
+    value.title = value.title.trim().into();
+    if value.kind == Kind::Api
+        && !value.url.is_empty()
+        && value
+            .services
+            .first()
+            .is_none_or(|first| first.url.trim() != value.url.trim())
+    {
+        return Err(AppError::invalid().with("url", "API 凭据的 url 必须与第一个服务地址一致。"));
+    }
+    normalize_services(value)?;
+    validate(value)
+}
+
 pub(crate) fn validate(value: &EntryInput) -> Result<()> {
     if value.tags.len() > 64 {
         return Err(AppError::invalid().with("tags", "标签数量不能超过 64 个。"));

@@ -79,3 +79,66 @@ fn incompatible_database_is_rejected_without_modification() {
     assert!(Vault::open(directory.path()).is_err());
     assert_eq!(before, std::fs::read(path).unwrap());
 }
+#[test]
+fn export_entries_reads_every_field_and_optional_trash() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Vault::open(directory.path()).unwrap();
+    let kept = input();
+    let removed = input();
+    let created = store
+        .create_many_checked(vec![kept.clone(), removed.clone()], &policy(false))
+        .unwrap();
+    store
+        .delete_many_checked(
+            vec![EntryVersion {
+                id: created[1].id.clone(),
+                expected_revision: created[1].revision,
+            }],
+            &policy(false),
+        )
+        .unwrap();
+
+    let live = store.export_entries(false).unwrap();
+    assert_eq!(live.len(), 1);
+    assert_eq!(live[0].title, kept.title);
+
+    let everything = store.export_entries(true).unwrap();
+    let mut titles: Vec<&str> = everything
+        .iter()
+        .map(|entry| entry.title.as_str())
+        .collect();
+    titles.sort();
+    assert_eq!(titles, vec!["isolated record", "isolated record"]);
+    assert!(
+        everything
+            .iter()
+            .all(|entry| entry.secret == removed.secret)
+    );
+}
+
+#[test]
+fn import_many_accepts_more_than_batch_limit_atomically() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Vault::open(directory.path()).unwrap();
+    let values: Vec<EntryInput> = (0..150)
+        .map(|index| {
+            let mut value = input();
+            value.title = format!("imported-{index}");
+            value
+        })
+        .collect();
+    let created = store.import_many(values, &policy(false)).unwrap();
+    assert_eq!(created.len(), 150);
+    assert_eq!(store.list("", None).unwrap().len(), 150);
+}
+
+#[test]
+fn import_many_rolls_back_when_authorization_fails() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Vault::open(directory.path()).unwrap();
+    let error = store
+        .import_many(vec![input(), input(), input()], &policy(true))
+        .unwrap_err();
+    assert_eq!(error.code, "TEST_DENIED");
+    assert!(store.list("", None).unwrap().is_empty());
+}

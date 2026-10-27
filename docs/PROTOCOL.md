@@ -31,7 +31,13 @@
 | updates.status / check / download / cancel / install | 在线更新，仅桌面 |
 | mcp.configuration | 当前可用的 MCP 连接配置 |
 | filling.capture / write | 一次性目标捕获、本地窗口或文件填写 |
+| transfer.export / inspect / import / pending / respond | 桌面导入导出、文件预检与 MCP 导出确认；导入整批回滚 |
+| transfer.mcpExport | MCP 请求加密导出；桌面在线输入口令，只返回状态与数量 |
 
-MCP 使用 SDK 原生 JSON-RPC 协议。11 个工具映射到相同业务分发器，不额外包装一层自定义 MCP 协议。`Caller` 永不从 JSON 解析，MCP 无法调用权限修改、原文读取、永久删除或更新操作。接口授权后才进入业务；事务内再次核对最新策略和对象版本。秘密原文只在本地填写路径中解析，MCP 出口仍过滤协议帧。
+MCP 使用 SDK 原生 JSON-RPC 协议。12 个工具映射到相同业务分发器，不额外包装一层自定义 MCP 协议。`Caller` 永不从 JSON 解析，MCP 无法调用权限修改、原文读取、永久删除或更新操作。接口授权后才进入业务；事务内再次核对最新策略和对象版本。秘密原文只在本地填写路径中解析，MCP 出口仍过滤协议帧。
+
+`export_entries` 通过 `transfer.mcpExport` 进入核心：核心向桌面会话登记待确认请求，用户在 Vue 弹窗输入口令后由桌面写出加密 JSON 到数据目录的 `exports`。口令、路径与文件内容均不经过 MCP 线路；工具结果只有 `status/count/format/encrypted`。等待上限 120 秒。
+
+`transfer.export`、`transfer.inspect`、`transfer.import`、`transfer.pending` 与 `transfer.respond` 仅桌面身份可调用。
 
 Tauri 壳的 smoke_* / finish_smoke 是测试钩子，要求显式 --smoke-test 和隔离 --data-dir；不属于业务 JSON-RPC 或 MCP 工具。

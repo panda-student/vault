@@ -14,6 +14,7 @@ pub(super) fn desktop(
     }
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(state);
     #[cfg(feature = "test-support")]
     let builder = builder.invoke_handler(tauri::generate_handler![

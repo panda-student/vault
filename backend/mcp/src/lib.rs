@@ -33,6 +33,7 @@ fn execute(core: &CoreSession, name: &str, value: Value) -> Result<Value> {
         "organize" => "tags.organize",
         "write_credential" => "filling.write",
         "capture_fill_target" => "filling.capture",
+        "export_entries" => "transfer.mcpExport",
         _ => return Err(AppError::new("UNKNOWN_TOOL", "该工具不存在。")),
     };
     core.invoke(method, value)

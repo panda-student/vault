@@ -30,7 +30,7 @@ async function append(name,license,directory,extra){
 for(const p of metadata.packages.filter(p=>ids.has(p.id)&&!metadata.workspace_members.includes(p.id)).sort((a,b)=>a.name.localeCompare(b.name))){
  await append(`${p.name} ${p.version}`,p.license,dirname(p.manifest_path),p.license_file);
 }
-for(const name of ['vue','@vue/shared','@vue/reactivity','@vue/runtime-core','@vue/runtime-dom','@tauri-apps/api']){
+for(const name of ['vue','@vue/shared','@vue/reactivity','@vue/runtime-core','@vue/runtime-dom','@tauri-apps/api','@tauri-apps/plugin-dialog']){
  const directory=join('node_modules',name),p=JSON.parse(await readFile(join(directory,'package.json'),'utf8'));
  await append(`${name} ${p.version}`,p.license,directory);
 }

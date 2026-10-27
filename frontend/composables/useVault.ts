@@ -10,6 +10,7 @@ import { useCredentials } from "./useCredentials";
 import { useTags } from "./useTags";
 import { useSettings } from "./useSettings";
 import { useNavigation } from "./useNavigation";
+import { useTransfer } from "./useTransfer";
 export function useVault() {
   const state = createVaultState();
   const dependencies: VaultDependencies = {
@@ -47,11 +48,13 @@ export function useVault() {
   } = state;
   const { hide, refresh, invalidateReveal } = credentials;
   const { stashDraft, loadEntry, reconcile } = draft;
+  const transfer = useTransfer({ notify: dependencies.notify, refresh });
   const updater = useUpdater(
     () =>
       !!((editing.value || creating.value) && dirty.value) ||
       drafts.size > 0 ||
       !!permissionDraft.value ||
+      !!transfer.pendingExport.value ||
       saving.value ||
       settingsSaving.value ||
       !!document.querySelector("dialog[open]:not(#update-dialog)"),
@@ -130,6 +133,7 @@ export function useVault() {
     ...tags,
     ...settings,
     ...navigation,
+    ...transfer,
     updater,
   };
 }

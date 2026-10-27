@@ -7,6 +7,7 @@
   "vault-storage": ["vault-contracts"],
   "vault-platform": ["vault-contracts", "vault-common"],
   "vault-updater": ["vault-contracts", "vault-common"],
+  "vault-transfer": ["vault-contracts"],
   "vault-core": [
     "vault-contracts",
     "vault-common",
@@ -15,7 +16,8 @@
     "vault-filling",
     "vault-storage",
     "vault-platform",
-    "vault-updater"
+    "vault-updater",
+    "vault-transfer"
   ],
   "vault-mcp": ["vault-contracts", "vault-core", "vault-platform"],
   "local-password-manager": ["vault-core", "vault-mcp"]

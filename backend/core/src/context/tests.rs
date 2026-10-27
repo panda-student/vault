@@ -826,3 +826,4 @@ fn desktop_and_mcp_sessions_share_one_core_without_sharing_identity() {
 
 mod fixture;
 mod storage_workflows;
+mod transfer;

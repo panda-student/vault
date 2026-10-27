@@ -15,6 +15,12 @@ impl VaultRepository for Vault {
     fn create_many(&self, v: Vec<EntryInput>, p: &dyn MutationPolicy) -> Result<Vec<EntrySummary>> {
         self.create_many_checked(v, p)
     }
+    fn export_entries(&self, include_trash: bool) -> Result<Vec<EntryInput>> {
+        Vault::export_entries(self, include_trash)
+    }
+    fn import_many(&self, v: Vec<EntryInput>, p: &dyn MutationPolicy) -> Result<Vec<EntrySummary>> {
+        Vault::import_many(self, v, p)
+    }
     fn update_many(&self, v: Vec<EntryPatch>, p: &dyn MutationPolicy) -> Result<Vec<EntrySummary>> {
         self.update_many_checked(v, p)
     }

@@ -1,5 +1,5 @@
 //! Named parameters shared by every JSON-RPC transport.
-use super::credentials::Settings;
+use super::credentials::{Kind, Settings};
 use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -57,3 +57,44 @@ pub struct StartupArgs {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PurgeArgs {}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TransferFormat {
+    Json,
+    Csv,
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExportArgs {
+    pub format: TransferFormat,
+    pub include_trash: bool,
+    pub kinds: Vec<Kind>,
+    pub encrypted: bool,
+    pub passphrase: Option<String>,
+    pub path: String,
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransferImportArgs {
+    pub path: String,
+    pub passphrase: Option<String>,
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransferRespondArgs {
+    pub id: String,
+    pub passphrase: Option<String>,
+    #[serde(default)]
+    pub cancel: bool,
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransferPathArgs {
+    pub path: String,
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct McpExportArgs {
+    #[serde(default)]
+    pub include_trash: bool,
+}

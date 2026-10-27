@@ -218,6 +218,12 @@ impl CoreSession {
                     .filling
                     .write(storage, self.service.windows.as_ref(), args)
             }
+            Operation::Export(args) => self.export(args),
+            Operation::InspectExport(args) => self.inspect_export(args),
+            Operation::Import(args) => self.import_entries(args),
+            Operation::TransferPending => self.transfer_pending(),
+            Operation::TransferRespond(args) => self.transfer_respond(args),
+            Operation::McpExport(args) => self.mcp_export(args),
         }
     }
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { reactive, ref, watch } from "vue";
 import { useVault } from "./composables/useVault";
 import VaultSidebar from "./components/VaultSidebar.vue";
 import CredentialsPage from "./pages/CredentialsPage.vue";
@@ -17,6 +17,51 @@ const organizationName = ref(""),
   organizationError = ref(""),
   organizing = ref(false);
 const deleteTagDialog = ref<HTMLDialogElement | null>(null);
+const mcpExportDialog = ref<HTMLDialogElement | null>(null);
+const mcpPassphrase = ref("");
+const mcpConfirm = ref("");
+const mcpError = ref("");
+const mcpBusy = ref(false);
+watch(
+  () => v.pendingExport?.id,
+  (id) => {
+    if (id) {
+      mcpPassphrase.value = "";
+      mcpConfirm.value = "";
+      mcpError.value = "";
+      if (!mcpExportDialog.value?.open) mcpExportDialog.value?.showModal();
+    } else mcpExportDialog.value?.close();
+  },
+);
+async function submitMcpExport() {
+  if (!v.pendingExport || mcpBusy.value) return;
+  mcpError.value = "";
+  if (!mcpPassphrase.value) {
+    mcpError.value = "请输入导出口令。";
+    return;
+  }
+  if (mcpPassphrase.value !== mcpConfirm.value) {
+    mcpError.value = "两次输入的口令不一致。";
+    return;
+  }
+  mcpBusy.value = true;
+  try {
+    if (!(await v.respondPending(mcpPassphrase.value)))
+      mcpError.value = v.pendingError || "导出未完成，请重试。";
+  } finally {
+    mcpBusy.value = false;
+  }
+}
+async function cancelMcpExport() {
+  if (!v.pendingExport || mcpBusy.value) return;
+  mcpBusy.value = true;
+  try {
+    if (!(await v.cancelPending()))
+      mcpError.value = v.pendingError || "取消未完成，请重试。";
+  } finally {
+    mcpBusy.value = false;
+  }
+}
 async function deleteTag() {
   if (!previousName.value) return;
   organizing.value = true;
@@ -186,6 +231,56 @@ async function saveOrganization() {
         删除标签
       </button>
     </div>
+  </dialog>
+  <dialog
+    ref="mcpExportDialog"
+    id="mcp-export-dialog"
+    @cancel.prevent="cancelMcpExport"
+  >
+    <form @submit.prevent="submitMcpExport">
+      <h2>AI 请求加密导出</h2>
+      <p class="dialog-description">
+        AI 请求导出 {{ v.pendingExport?.count ?? 0 }} 条{{
+          v.pendingExport?.includeTrash ? "（含垃圾桶）" : ""
+        }}凭据。请设置导出口令；口令只在本地参与加密，不会发送给
+        AI。文件将保存到数据目录的 exports 文件夹。
+      </p>
+      <div class="form-field">
+        <label for="mcp-export-passphrase">口令</label
+        ><input
+          id="mcp-export-passphrase"
+          v-model="mcpPassphrase"
+          type="password"
+          autocomplete="new-password"
+          autofocus
+        />
+      </div>
+      <div class="form-field">
+        <label for="mcp-export-confirm">确认口令</label
+        ><input
+          id="mcp-export-confirm"
+          v-model="mcpConfirm"
+          type="password"
+          autocomplete="new-password"
+        />
+      </div>
+      <p class="dialog-description" style="margin: -6px 0 0">
+        口令不会保存。忘记口令将无法恢复导出文件。
+      </p>
+      <p v-if="mcpError" class="form-error">{{ mcpError }}</p>
+      <div class="modal-actions">
+        <button
+          type="button"
+          class="secondary"
+          :disabled="mcpBusy"
+          @click="cancelMcpExport"
+        >
+          取消导出</button
+        ><button id="mcp-export-submit" class="primary" :disabled="mcpBusy">
+          {{ mcpBusy ? "处理中…" : "确认导出" }}
+        </button>
+      </div>
+    </form>
   </dialog>
   <div v-if="v.toast" class="toast" role="status">{{ v.toast }}</div>
 </template>

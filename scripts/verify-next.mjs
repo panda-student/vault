@@ -27,7 +27,7 @@ try{
  const launch=config.value.mcpServers?.vault;
  check('mcp-config-name-and-current-path',!config.failed&&launch&&await realpath(launch.command)===await realpath(executable)&&launch.args[0]==='--mcp'&&launch.args[1]==='--data-dir'&&await realpath(launch.args[2])===await realpath(data));
  const tools=(await client.listTools()).tools;
- check('eleven-tools-no-network-or-purge',tools.length===11&&!tools.some(t=>/execute_api|trash|purge/.test(t.name)));
+ check('twelve-tools-no-network-or-purge',tools.length===12&&!tools.some(t=>/execute_api|trash|purge/.test(t.name)));
  const created=await call('create_entries',{items:[
   {kind:'database',title:'MCP DB UVT',tags:['MCP System','UVT'],database:{databaseType:'Oracle',host:'db-next.invalid',port:'1521',databaseName:'ORCL'},secret},
   {kind:'database',title:'MCP DB Local',database:{databaseType:'Redis',host:'127.0.0.1',port:'6379',databaseName:'0'},secret:''},

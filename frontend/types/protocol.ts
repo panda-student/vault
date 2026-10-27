@@ -28,7 +28,13 @@ export type RpcMethod =
   | "updates.install"
   | "mcp.configuration"
   | "filling.write"
-  | "filling.capture";
+  | "filling.capture"
+  | "transfer.export"
+  | "transfer.inspect"
+  | "transfer.import"
+  | "transfer.pending"
+  | "transfer.respond"
+  | "transfer.mcpExport";
 export interface ApiError {
   code: string;
   message: string;

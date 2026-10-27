@@ -29,6 +29,7 @@ pub(crate) struct CoreService {
     pub(crate) windows: Arc<dyn SystemPlatform>,
     pub(crate) permissions: permissions::PermissionService,
     pub(crate) desktop: RwLock<vault_contracts::desktop::DesktopMetadata>,
+    pub(crate) transfer: crate::transfer::TransferCoordinator,
 }
 pub struct CoreSession {
     execution_gate: Arc<RwLock<()>>,
@@ -51,6 +52,7 @@ pub(crate) fn assemble(
             windows: platform,
             permissions: permissions::PermissionService,
             desktop: RwLock::new(Default::default()),
+            transfer: Default::default(),
         }),
         caller: if mcp_mode {
             permissions::Caller::Mcp

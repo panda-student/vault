@@ -231,6 +231,23 @@ export async function runSmoke() {
       "settings-no-longer-contains-updates",
       !document.querySelector("#update-panel"),
     );
+    check(
+      "transfer-section-present",
+      !!document.querySelector("#export-open") &&
+        !!document.querySelector("#import-open"),
+    );
+    await click("#export-open");
+    check(
+      "export-dialog-defaults",
+      el<HTMLDialogElement>("#export-dialog").open &&
+        el<HTMLInputElement>("#export-encrypted").checked &&
+        el<HTMLSelectElement>("#export-format").value === "json" &&
+        document.querySelectorAll('[id^="export-kind-"]:checked').length ===
+          4 &&
+        !el<HTMLInputElement>("#export-trash").checked,
+    );
+    await click("#export-dialog button.secondary");
+    await until(() => !el<HTMLDialogElement>("#export-dialog").open);
     await click('[data-nav="updates"]');
     check(
       "updates-is-a-top-level-page",

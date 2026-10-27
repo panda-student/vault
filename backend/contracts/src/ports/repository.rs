@@ -23,6 +23,12 @@ pub trait VaultRepository: CredentialReader + Send + Sync {
         values: Vec<EntryInput>,
         policy: &dyn MutationPolicy,
     ) -> Result<Vec<EntrySummary>>;
+    fn export_entries(&self, include_trash: bool) -> Result<Vec<EntryInput>>;
+    fn import_many(
+        &self,
+        values: Vec<EntryInput>,
+        policy: &dyn MutationPolicy,
+    ) -> Result<Vec<EntrySummary>>;
     fn update_many(
         &self,
         values: Vec<EntryPatch>,

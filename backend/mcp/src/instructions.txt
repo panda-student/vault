@@ -30,6 +30,11 @@ Updates require expectedRevision.
 
 No AI plaintext read/copy/export.
 
+export_entries writes an encrypted file only after the desktop user types a
+passphrase. The AI never receives the passphrase, target path, plaintext or
+ciphertext; the result is status and entry count only. The desktop app must be
+open, and the user may decline or ignore the request.
+
 restore_entries and pin_entries act on one entry; organize renames or deletes one tag
 globally and cannot grant MCP new permissions.
 

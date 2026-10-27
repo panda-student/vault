@@ -15,6 +15,7 @@ vault-core = { path = "../backend/core" }
 vault-mcp = { path = "../backend/mcp" }
 tauri = { version = "=2.12.4", default-features = false, features = ["wry", "compression", "common-controls-v6", "tray-icon"] }
 tauri-plugin-clipboard-manager = "2"
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt", "io-std", "io-util", "time", "process", "sync", "net"] }

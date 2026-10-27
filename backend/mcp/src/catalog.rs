@@ -314,6 +314,16 @@ pub(super) fn tools() -> Vec<Tool> {
     ],
     "additionalProperties": false
 }).as_object().unwrap().clone()).with_annotations(ToolAnnotations::new().read_only(false).destructive(true).open_world(false)),
+        Tool::new("export_entries","Export an encrypted vault file through the desktop app. The desktop user reviews the request and types the passphrase; this tool never receives the passphrase, target path, plaintext or ciphertext, and returns status plus entry count only. Encryption is always applied. Requires write_file permission and an open desktop window; ask again later if the user does not respond within two minutes.",json!({
+    "type": "object",
+    "properties": {
+        "includeTrash": {
+            "type": "boolean",
+            "default": false
+        }
+    },
+    "additionalProperties": false
+}).as_object().unwrap().clone()).with_annotations(ToolAnnotations::new().read_only(false).destructive(false).open_world(false)),
         Tool::new("capture_fill_target","Capture a Windows input target. For Edge/Chrome specify windowTitle (literal substring), fieldName (exact accessible label) and expectedPassword=true for passwords. The unique named editable control is focused locally; ambiguous, readonly or mismatched targets are rejected. Optional processId narrows the window. Empty arguments capture the current native caret; DOM focus alone is insufficient. No field values are read. Returns a one-use reference valid for 30 seconds.",json!({
     "type": "object",
     "properties": {

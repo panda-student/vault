@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Desktop window: JSON-RPC plus OS file dialogs for import and export.",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-save"]
+}

@@ -1,5 +1,5 @@
 [workspace]
-members = ["backend/core", "backend/contracts", "backend/credentials", "backend/permissions", "backend/filling", "backend/storage", "backend/updater", "backend/platform", "backend/mcp", "backend/common", "src-tauri"]
+members = ["backend/core", "backend/contracts", "backend/credentials", "backend/permissions", "backend/filling", "backend/storage", "backend/transfer", "backend/updater", "backend/platform", "backend/mcp", "backend/common", "src-tauri"]
 resolver = "3"
 
 [profile.release]

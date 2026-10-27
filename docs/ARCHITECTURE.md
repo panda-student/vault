@@ -15,6 +15,7 @@ flowchart TD
       Core --> Permission[permissions：策略和输出保护]
       Core --> Credential[credentials：凭据业务]
       Core --> Filling[filling：字段解析和填写]
+      Core --> Transfer[transfer：导入导出编解码和加密容器]
       Core --> Update[updater：签名验证和更新]
       Core --> Platform[platform：Windows 能力和运行协调]
       Credential -. 仓储接口 .-> Storage[storage：SQLite 事务和加密]
@@ -38,6 +39,7 @@ flowchart TD
 | backend/permissions | 默认/标签/凭据权限、事务授权策略、输出保护 |
 | backend/filling | 凭据字段解析、文件模板和窗口填写用例 |
 | backend/storage | SQLite 连接和事务、加密记录、标签和垃圾桶持久化 |
+| backend/transfer | JSON/CSV 编解码、导入行校验和加密导出容器 |
 | backend/platform | UIA、SendInput、文件替换、进程、命名管道和暂停协调 |
 | backend/updater | 更新元数据、签名、下载、健康检查、回退和安装编排 |
 | backend/mcp | MCP 工具协议、参数适配、安全输出和 stdio 桥 |
@@ -60,9 +62,9 @@ flowchart TD
 | 修改凭据 | 更新单条或批量凭据 |
 | 移入垃圾桶 | 核对版本后逻辑删除 |
 | 填写到窗口 | 捕获目标及统一窗口写入 |
-| 写入文件 | 新建文件或替换明确占位符 |
+| 写入文件 | 新建文件、替换明确占位符或加密导出 |
 
-窗口填写与文件写入分别鉴权，共享的 `write_credential` 按真实目标类型判断。两项都关闭时，该工具不再列出。配置查询不属于这六组，但仍受 MCP 总开关控制。
+窗口填写与文件写入分别鉴权，共享的 `write_credential` 按真实目标类型判断。MCP 的 `export_entries` 沿用文件写入权限，但只能导出加密 JSON，且必须由桌面在线输入口令；AI 只收到状态与数量。两项都关闭时，对应工具不再列出。配置查询不属于这六组，但仍受 MCP 总开关控制。
 
 每次工具发现和操作执行都读取最新持久化设置，已建立连接的后续调用立即受新策略约束；正在执行的已授权操作不追溯撤销。客户端若缓存工具清单，可能需要刷新清单，但旧清单中的调用仍会被核心拒绝。
 
