@@ -9,13 +9,14 @@ import type {
   Info,
   ApiService,
 } from "../types/models";
-import { protocolName } from "../utils/display";
+import { missingSite, protocolName } from "../utils/display";
 export function createVaultState() {
   const page = ref<"entries" | "trash" | "settings" | "mcp" | "updates">(
     "entries",
   );
   const tagFilter = ref(""),
-    typeFilter = ref<Kind | "">("");
+    typeFilter = ref<Kind | "">(""),
+    missingOnly = ref(false);
   const organization = ref<Organization>({ tags: [] }),
     trash = ref<TrashEntry[]>([]);
   const query = ref(""),
@@ -63,11 +64,13 @@ export function createVaultState() {
   };
   const drafts = new Map<string, Draft>();
   const switching = ref(false);
+  const missingCount = computed(() => entries.value.filter(missingSite).length);
   const list = computed(() =>
     entries.value.filter(
       (e) =>
         (!tagFilter.value || e.tags.includes(tagFilter.value)) &&
         (!typeFilter.value || e.kind === typeFilter.value) &&
+        (!missingOnly.value || missingSite(e)) &&
         [
           e.title,
           e.account,
@@ -118,6 +121,8 @@ export function createVaultState() {
     page,
     tagFilter,
     typeFilter,
+    missingOnly,
+    missingCount,
     organization,
     trash,
     query,

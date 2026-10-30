@@ -28,7 +28,7 @@ try{
  }
  async function call(name,args){const r=await client.callTool({name,arguments:args});assert.ok(!r.isError);return JSON.parse(r.content.find(c=>c.type==='text').text);}
  await connect();
- const created=await call('create_entries',{kind:'password',title:'Installer preservation fixture',secret:'FAKE_INSTALLER_SECRET_ONLY_5917'});
+ const created=await call('create_entries',{kind:'password',title:'Installer preservation fixture',url:'https://example.invalid',secret:'FAKE_INSTALLER_SECRET_ONLY_5917'});
  const id=created.id;assert.ok(id);await client.close();client=null;await new Promise(r=>setTimeout(r,6000));
  await phase('Reinstall');await connect();
  await call('get_entries',{id});

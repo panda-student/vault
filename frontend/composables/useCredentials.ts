@@ -9,6 +9,7 @@ export function useCredentials(
     VaultState,
     | "tagFilter"
     | "typeFilter"
+    | "missingOnly"
     | "organization"
     | "trash"
     | "query"
@@ -36,6 +37,7 @@ export function useCredentials(
   const {
     tagFilter,
     typeFilter,
+    missingOnly,
     organization,
     trash,
     query,
@@ -133,6 +135,16 @@ export function useCredentials(
     form.value.secret = value;
     if (visible) revealed.value = value;
   }
+  function rejectForm(text: string) {
+    formError.value = text;
+    // 保存失败必须醒目：除了表单底部的红字，同时弹出顶部 toast 并滚动到错误区域。
+    notify(text);
+    void nextTick().then(() =>
+      document
+        .getElementById("form-error")
+        ?.scrollIntoView({ block: "nearest" }),
+    );
+  }
   async function openUrl(url: string) {
     try {
       await invoke("browser.open", { url });
@@ -192,12 +204,22 @@ export function useCredentials(
               .filter((service) => service.url.trim())
               .map((service) => ({ ...service, url: service.url.trim() }))
           : [];
+      if (formKind.value === "api" && services.length === 0) {
+        rejectForm("API 凭据必须填写至少一个网站 / API 地址。");
+        return;
+      }
+      if (formKind.value === "password" && !form.value.url.trim()) {
+        rejectForm("账号密码必须填写归属网站。");
+        return;
+      }
       const payload = {
         ...form.value,
         database: formKind.value === "database" ? form.value.database : null,
         services,
         url:
-          formKind.value === "api" ? (services[0]?.url ?? "") : form.value.url,
+          formKind.value === "api"
+            ? (services[0]?.url ?? "")
+            : form.value.url.trim(),
       };
       if (editing.value) {
         // 非 API 条目不携带 services：后端要求 services 与 url 一致，传空数组会与之冲突。
@@ -221,6 +243,7 @@ export function useCredentials(
       query.value = "";
       tagFilter.value = "";
       typeFilter.value = "";
+      missingOnly.value = false;
       creating.value = false;
       await refresh();
       selected.value = updated.id;
@@ -228,14 +251,7 @@ export function useCredentials(
       switching.value = false;
       notify("已加密保存");
     } catch (value) {
-      formError.value = message(value);
-      // 保存失败必须醒目：除了表单底部的红字，同时弹出顶部 toast 并滚动到错误区域。
-      notify(formError.value);
-      void nextTick().then(() =>
-        document
-          .getElementById("form-error")
-          ?.scrollIntoView({ block: "nearest" }),
-      );
+      rejectForm(message(value));
     } finally {
       switching.value = false;
       saving.value = false;

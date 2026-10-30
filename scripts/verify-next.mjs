@@ -59,7 +59,8 @@ try{
  check('purge-tool-unavailable',(await call('trash.empty',{})).failed);
  check('removed-api-tool-unavailable',(await call('execute_api_request',{credentialId:api.id,path:'/'})).failed);
  // P1: 校验失败必须携带字段级 details，AI 才能定位字段自纠而不是盲试。
- const detailTarget=(await call('create_entries',{kind:'password',title:'Acceptance Restore',tags:['AcceptanceTag'],secret})).value;
+ const detailTarget=(await call('create_entries',{kind:'password',title:'Acceptance Restore',url:'https://acceptance.invalid',tags:['AcceptanceTag'],secret})).value;
+ check('metadata-reports-known-site',(await call('get_entries',{id:detailTarget.id})).value.siteMissing===false);
  const mismatch=await call('update_entries',{id:detailTarget.id,expectedRevision:detailTarget.revision,url:'https://mismatch.invalid',services:[]});
  check('invalid-input-details-name-field',mismatch.failed&&Array.isArray(mismatch.value.details)&&mismatch.value.details.some(d=>d.field==='services'&&typeof d.reason==='string'&&d.reason.length>0));
  // P2: MCP 恢复垃圾桶条目（更新权限范围内），输出保持受控元数据（无备注、无密钥）。

@@ -7,6 +7,7 @@ import TrashPage from "./pages/TrashPage.vue";
 import McpPage from "./pages/McpPage.vue";
 import SettingsPage from "./pages/SettingsPage.vue";
 import UpdatesPage from "./pages/UpdatesPage.vue";
+import { setExportAttention } from "./api/desktop";
 const state = useVault();
 const v = reactive(state);
 const { deleteDialog } = state;
@@ -25,6 +26,8 @@ const mcpBusy = ref(false);
 watch(
   () => v.pendingExport?.id,
   (id) => {
+    // 需要用户亲自输入口令：窗口弹到最上层并闪烁任务栏，结束后恢复。
+    void setExportAttention(Boolean(id)).catch(() => undefined);
     if (id) {
       mcpPassphrase.value = "";
       mcpConfirm.value = "";
@@ -239,6 +242,7 @@ async function saveOrganization() {
   >
     <form @submit.prevent="submitMcpExport">
       <h2>AI 请求加密导出</h2>
+      <p class="dialog-notice">需要你亲自设置导出口令，请在此窗口完成。</p>
       <p class="dialog-description">
         AI 请求导出 {{ v.pendingExport?.count ?? 0 }} 条{{
           v.pendingExport?.includeTrash ? "（含垃圾桶）" : ""

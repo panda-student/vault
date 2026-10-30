@@ -3,7 +3,7 @@ import { invoke } from "../api/desktop";
 import type { Entry } from "../types/models";
 import type { VaultState } from "./state";
 import type { VaultDependencies } from "./dependencies";
-import { fieldsFor } from "../utils/credentialForm";
+import { emptyService, fieldsFor } from "../utils/credentialForm";
 import { message } from "../utils/errors";
 export function useCredentialDraft(
   state: Pick<
@@ -124,7 +124,7 @@ export function useCredentialDraft(
   }
   function addService() {
     if (form.value.services.length < 20)
-      form.value.services.push({ id: "", protocol: "openai", url: "" });
+      form.value.services.push(emptyService());
   }
   function closeForm() {
     if (saving.value) return;

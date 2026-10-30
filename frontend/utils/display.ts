@@ -1,10 +1,12 @@
-import type { Kind, ApiProtocol } from "../types/models";
+import type { Kind, ApiProtocol, Entry } from "../types/models";
+export const missingSite = (entry: Pick<Entry, "kind" | "url">) =>
+  (entry.kind === "password" || entry.kind === "api") && !entry.url.trim();
 export const protocolName = (protocol: ApiProtocol) =>
   ({
     openai: "OpenAI 兼容",
     anthropic: "Anthropic",
     gemini: "Gemini",
-    custom: "自定义",
+    custom: "HTTP/HTTPS",
   })[protocol];
 export const kindName = (kind: Kind) =>
   ({

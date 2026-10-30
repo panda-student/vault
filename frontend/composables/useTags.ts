@@ -8,6 +8,7 @@ export function useTags(
     | "page"
     | "tagFilter"
     | "typeFilter"
+    | "missingOnly"
     | "info"
     | "permissionDraft"
     | "editing"
@@ -21,6 +22,7 @@ export function useTags(
     page,
     tagFilter,
     typeFilter,
+    missingOnly,
 
     info,
     permissionDraft,
@@ -74,6 +76,7 @@ export function useTags(
   function allEntries() {
     tagFilter.value = "";
     typeFilter.value = "";
+    missingOnly.value = false;
     navigate("entries");
   }
   return { organize, filterTag, allEntries };

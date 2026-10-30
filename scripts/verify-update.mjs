@@ -87,7 +87,7 @@ try{
  desktop=spawn(executable,['--data-dir',data],{env,windowsHide:true,stdio:['ignore','ignore','pipe']});
  desktop.stderr.on('data',bytes=>{report.desktopDiagnostics=((report.desktopDiagnostics||'')+String(bytes)).slice(-2000);});
  await connect();
- client=await mcp();const created=await client.callTool({name:'create_entries',arguments:{kind:'password',title:'升级保留样例',account:'test-user',tags:['验收标签'],secret:'FAKE_UPDATE_SECRET_ONLY_6721'}});const entry=JSON.parse(created.content.find(c=>c.type==='text').text);const id=entry.id||entry.results?.[0]?.id;assert.ok(id);await client.close();client=null;
+ client=await mcp();const created=await client.callTool({name:'create_entries',arguments:{kind:'password',title:'升级保留样例',url:'https://example.invalid',account:'test-user',tags:['验收标签'],secret:'FAKE_UPDATE_SECRET_ONLY_6721'}});const entry=JSON.parse(created.content.find(c=>c.type==='text').text);const id=entry.id||entry.results?.[0]?.id;assert.ok(id);await client.close();client=null;
  await browser('snapshot','-i');await openUpdates();
  await waitPhase('error');check('invalid-signature-rejected-before-download',(await status()).error.includes('签名'));await screenshot('01-invalid-signature');
  mode='offline';await click('#check-update');await waitPhase('error');check('network-failure-is-retryable',(await status()).error.includes('网络'));

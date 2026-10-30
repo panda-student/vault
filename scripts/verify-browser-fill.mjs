@@ -59,7 +59,7 @@ try {
   check('fixture window has native foreground before testing', window.foreground===true);
   check('fixture setup did not focus a form input', (await evaluate('({inputFocused:document.activeElement instanceof HTMLInputElement})')).inputFocused===false);
   await client.connect(transport);
-  const entry = await call('create_entries', {kind:'password', title:'Browser fixture', secret});
+  const entry = await call('create_entries', {kind:'password', title:'Browser fixture', url:'https://example.invalid', secret});
   const fill = targetId => call('write_credential', {credentialId:entry.id, field:'secret', target:{type:'input', targetId}});
   // Setup activates only the browser window. Vault must locate/focus each input;
   // no browser typing, native input click or DOM assignment of the secret is used.

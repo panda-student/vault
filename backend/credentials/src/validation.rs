@@ -44,23 +44,40 @@ pub(crate) fn normalize_services(value: &mut EntryInput) -> Result<()> {
     }
     Ok(())
 }
-/// Canonical entry preparation shared by the write policy and import preflight.
-pub(crate) fn prepare(value: &mut EntryInput) -> Result<()> {
-    value.title = value.title.trim().into();
-    if value.kind == Kind::Api
-        && !value.url.is_empty()
-        && value
-            .services
-            .first()
-            .is_none_or(|first| first.url.trim() != value.url.trim())
-    {
-        return Err(AppError::invalid().with("url", "API 凭据的 url 必须与第一个服务地址一致。"));
-    }
-    normalize_services(value)?;
-    validate(value)
+/// Legacy imports stay readable; new writes must associate a site.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SiteRule {
+    Required,
+    LegacyAllowed,
 }
 
-pub(crate) fn validate(value: &EntryInput) -> Result<()> {
+/// Canonical entry preparation shared by the write policy and import preflight.
+pub(crate) fn prepare(value: &mut EntryInput, site: SiteRule) -> Result<()> {
+    value.title = value.title.trim().into();
+    value.url = value.url.trim().into();
+    if value.kind == Kind::Api {
+        if value.services.is_empty() {
+            if site == SiteRule::Required {
+                return Err(AppError::invalid()
+                    .with("services", "API 凭据必须填写至少一个网站 / API 地址。"));
+            }
+            value.url.clear();
+        } else if !value.url.is_empty()
+            && value
+                .services
+                .first()
+                .is_none_or(|first| first.url.trim() != value.url)
+        {
+            return Err(
+                AppError::invalid().with("url", "API 凭据的 url 必须与第一个服务地址一致。")
+            );
+        }
+    }
+    normalize_services(value)?;
+    validate(value, site)
+}
+
+pub(crate) fn validate(value: &EntryInput, site: SiteRule) -> Result<()> {
     if value.tags.len() > 64 {
         return Err(AppError::invalid().with("tags", "标签数量不能超过 64 个。"));
     }
@@ -100,6 +117,18 @@ pub(crate) fn validate(value: &EntryInput) -> Result<()> {
     }
     if value.secret.is_empty() && matches!(value.kind, Kind::Password | Kind::Api) {
         return Err(AppError::invalid().with("secret", "账号密码与 API 凭据必须设置密钥。"));
+    }
+    if site == SiteRule::Required {
+        match value.kind {
+            Kind::Password if value.url.is_empty() => {
+                return Err(AppError::invalid().with("url", "账号密码必须填写归属网站。"));
+            }
+            Kind::Api if value.services.is_empty() => {
+                return Err(AppError::invalid()
+                    .with("services", "API 凭据必须填写至少一个网站 / API 地址。"));
+            }
+            _ => {}
+        }
     }
     if value.title.len() > 1024 {
         return Err(AppError::invalid().with("title", "名称长度不能超过 1024。"));
@@ -167,7 +196,7 @@ pub(crate) fn apply_patch(mut value: EntryInput, patch: EntryPatch) -> Result<En
         if value.kind == Kind::Api {
             return Err(AppError::invalid().with("services", "API 服务地址请通过 services 修改。"));
         }
-        value.url = v;
+        value.url = v.trim().into();
     }
     normalize_services(&mut value)?;
     if let Some(v) = patch.secret {
@@ -176,7 +205,7 @@ pub(crate) fn apply_patch(mut value: EntryInput, patch: EntryPatch) -> Result<En
     if let Some(v) = patch.notes {
         value.notes = v;
     }
-    validate(&value)?;
+    validate(&value, SiteRule::Required)?;
 
     Ok(value)
 }

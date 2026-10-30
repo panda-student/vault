@@ -100,7 +100,9 @@ node scripts/verify-write.mjs
 
 ## 当前数据格式
 
-程序仅创建和读取 schema=4 密码库，不包含旧版升级或迁移器。旧 schema=1/2/3 在只读检查阶段被拒绝，不修改文件、不自动初始化。加密记录只包含标签，接口不接受 group；API 服务地址通过 services 明确保存，url 仅作为首个地址的派生摘要。协议仅支持 OpenAI、Anthropic、Gemini 和 custom。
+程序仅创建和读取 schema=4 密码库，不包含旧版升级或迁移器。旧 schema=1/2/3 在只读检查阶段被拒绝，不修改文件、不自动初始化。加密记录只包含标签，接口不接受 group；API 服务地址通过 services 明确保存，url 仅作为首个地址的派生摘要。协议仅支持 OpenAI、Anthropic、Gemini 和 custom（标准 HTTP/HTTPS 接口）。
+
+账号密码的新建和更新必须带非空 url；API 凭据必须带至少一个 services 地址。校验只要求非空，不限制协议或域名格式，以兼容内网地址和 android:// 等写法。导入走宽松校验，允许旧文件缺少网站；这类条目仍可读取、使用、复制和删除，但下次更新必须补齐，MCP 元数据以 siteMissing=true 标记。
 
 现有数据先在程序外一次性转换，保留转换前的加密备份，并验证所有凭据字段和密钥、垃圾桶、标签目录及权限规则。转换工具和含用户数据的转换结果均不随源码或发行包分发。当前 AES-GCM 的 AAD 和 DPAPI 标识是加密格式的一部分，不是旧版兼容分支。
 

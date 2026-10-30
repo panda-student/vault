@@ -23,7 +23,7 @@ try{
  const [a,b]=await Promise.all([connect(),connect()]);
  const pids=clients.map(c=>c.transportFixture.pid);
  const first=await services();check('two-connections-share-exactly-one-core',first.length===1);report.firstCore=first[0];
- const entry=await call(a,'create_entries',{kind:'password',title:'shared fixture',secret:'FAKE_SHARED_CORE_ONLY_9157'});
+ const entry=await call(a,'create_entries',{kind:'password',title:'shared fixture',url:'https://example.invalid',secret:'FAKE_SHARED_CORE_ONLY_9157'});
  check('second-connection-reads-first-connection-entry',(await call(b,'get_entries',{id:entry.id})).id===entry.id);
  const canonical='\\\\?\\'+await realpath(exe);
  const base=join(process.env.LOCALAPPDATA,'LocalPasswordManager','updates',createHash('sha256').update(canonical.toLowerCase()).digest('hex'));
@@ -31,14 +31,14 @@ try{
  pauseFlag=flag;
  lock=spawn('python',['-c',"import sqlite3,sys,time; c=sqlite3.connect(sys.argv[1]); c.execute('BEGIN IMMEDIATE'); print('locked',flush=True); time.sleep(3); c.commit(); c.close()",join(data,'vault.db')],{windowsHide:true,stdio:['ignore','pipe','pipe']});
  await new Promise((res,rej)=>{lock.stdout.once('data',res);lock.once('error',rej);});
- const running=call(a,'create_entries',{kind:'password',title:'accepted before pause',secret:'FAKE_RUNNING_WRITE_3416'});
+ const running=call(a,'create_entries',{kind:'password',title:'accepted before pause',url:'https://example.invalid',secret:'FAKE_RUNNING_WRITE_3416'});
  await pause(150);
  await writeFile(flag,JSON.stringify({token,expires:Math.floor(Date.now()/1000)+300}));
  await pause(200);
  const registrations=(await readdir(join(base,'bridges'))).map(name=>join(base,'bridges',name,'paused'));
  const ack=async()=>Promise.all(registrations.map(p=>readFile(p,'utf8').catch(()=>'')));
  check('pause-does-not-acknowledge-in-flight-write',(await ack()).some(v=>v!==token));
- let rejected=false;try{await b.callTool({name:'create_entries',arguments:{kind:'password',title:'must not replay',secret:'FAKE_REJECTED_WRITE_5664'}});}catch(e){rejected=String(e).includes('UPDATE_IN_PROGRESS');}
+ let rejected=false;try{await b.callTool({name:'create_entries',arguments:{kind:'password',title:'must not replay',url:'https://example.invalid',secret:'FAKE_REJECTED_WRITE_5664'}});}catch(e){rejected=String(e).includes('UPDATE_IN_PROGRESS');}
  check('new-write-is-explicitly-rejected-during-pause',rejected);
  const committed=await running;check('accepted-write-completes-before-pause',!!committed.id);
  const end=Date.now()+12000;while(Date.now()<end){const files=await readdir(join(base,'bridges'));const values=await Promise.all(files.map(p=>readFile(join(base,'bridges',p,'paused'),'utf8').catch(()=>'')));if(values.length>=2&&values.every(v=>v===token))break;await pause(75);}

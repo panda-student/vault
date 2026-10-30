@@ -63,19 +63,19 @@ for(const [index,order]of ['desktop-first','mcp-first'].entries()){
    socket.on('error',()=>{});socket.on('close',()=>{clearTimeout(timer);resolve();});
   });
   check(order+': non-vault process cannot use the desktop activation channel',activationReply==='');
-  const fromAi=await call(a,'create_entries',{kind:'password',title:'created by MCP',secret:'FAKE_UNIFIED_ONLY_5319'});
+  const fromAi=await call(a,'create_entries',{kind:'password',title:'created by MCP',url:'https://example.invalid',secret:'FAKE_UNIFIED_ONLY_5319'});
   const list=await invoke('credentials.list',{});
   check(order+': desktop reads MCP-created credential',list.some(e=>e.id===fromAi.value.id));
-  const desktop=await invoke('credentials.create',{input:{kind:'password',title:'created by desktop',account:'fixture',secret:'FAKE_DESKTOP_ONLY_6420'}});
+  const desktop=await invoke('credentials.create',{input:{kind:'password',title:'created by desktop',url:'https://example.invalid',account:'fixture',secret:'FAKE_DESKTOP_ONLY_6420'}});
   const read=await call(b,'get_entries',{id:desktop.id});
   check(order+': MCP reads desktop-created metadata without plaintext',!read.failed&&read.value.id===desktop.id&&!JSON.stringify(read.value).includes('FAKE_DESKTOP_ONLY_6420'));
   const settings=info.settings;settings.mcpPermissions.create=false;
   await invoke('settings.save',{settings});
-  check(order+': desktop permission change immediately rejects existing MCP connection',(await call(a,'create_entries',{kind:'password',title:'must fail',secret:'FAKE_DENIED_ONLY'})).failed);
-  const allowed=await invoke('credentials.create',{input:{kind:'password',title:'desktop retains permission',secret:'FAKE_ALLOWED_ONLY'}});
+  check(order+': desktop permission change immediately rejects existing MCP connection',(await call(a,'create_entries',{kind:'password',title:'must fail',url:'https://example.invalid',secret:'FAKE_DENIED_ONLY'})).failed);
+  const allowed=await invoke('credentials.create',{input:{kind:'password',title:'desktop retains permission',url:'https://example.invalid',secret:'FAKE_ALLOWED_ONLY'}});
   check(order+': desktop identity retains its permissions',!!allowed.id);
   settings.mcpPermissions.create=true;await invoke('settings.save',{settings});
-  check(order+': same MCP connection recovers after permission restore',!(await call(a,'create_entries',{kind:'password',title:'restored permission',secret:'FAKE_RESTORED_ONLY'})).failed);
+  check(order+': same MCP connection recovers after permission restore',!(await call(a,'create_entries',{kind:'password',title:'restored permission',url:'https://example.invalid',secret:'FAKE_RESTORED_ONLY'})).failed);
   await browser('screenshot',resolve(`artifacts/unified-backend-${order}.png`));
   settings.closeToTray=false;await invoke('settings.save',{settings});
   await run('powershell.exe',['-NoProfile','-Command',`

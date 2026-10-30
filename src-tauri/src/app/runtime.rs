@@ -19,13 +19,17 @@ pub(super) fn desktop(
     #[cfg(feature = "test-support")]
     let builder = builder.invoke_handler(tauri::generate_handler![
         crate::commands::rpc,
+        crate::commands::export_attention,
         crate::testing::desktop::smoke_clipboard,
         crate::testing::desktop::smoke_window_cycle,
         crate::testing::desktop::smoke_resize,
         crate::testing::desktop::finish_smoke
     ]);
     #[cfg(not(feature = "test-support"))]
-    let builder = builder.invoke_handler(tauri::generate_handler![crate::commands::rpc]);
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        crate::commands::rpc,
+        crate::commands::export_attention
+    ]);
     builder
         .setup(move |app| {
             let result: std::result::Result<(), Box<dyn std::error::Error>> = (|| {

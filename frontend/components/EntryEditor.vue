@@ -324,12 +324,18 @@ function addTag(event: Event) {
             v-if="formKind === 'password' || formKind === 'generic'"
             class="form-field"
           >
-            <label for="f-url">网址<span class="optional">可选</span></label>
+            <label for="f-url"
+              >{{ formKind === "password" ? "网站" : "网址"
+              }}<span v-if="formKind === 'generic'" class="optional"
+                >可选</span
+              ></label
+            >
             <div class="input-actions">
               <input
                 id="f-url"
                 v-model="form.url"
                 maxlength="4096"
+                :required="formKind === 'password'"
                 placeholder="https://example.com"
               /><button
                 type="button"
@@ -360,7 +366,7 @@ function addTag(event: Event) {
             class="form-field api-services-editor"
           >
             <div class="services-editor-heading">
-              <label>协议与服务地址</label
+              <label>网站 / API 地址</label
               ><button
                 id="add-service"
                 class="text-btn"
@@ -384,14 +390,14 @@ function addTag(event: Event) {
                   :aria-label="`服务 ${index + 1} 协议`"
                   :title="
                     service.protocol === 'custom'
-                      ? '自定义 / 协议待确认'
+                      ? '标准 HTTP/HTTPS 接口'
                       : undefined
                   "
                 >
                   <option value="openai">OpenAI 兼容</option>
                   <option value="anthropic">Anthropic</option>
                   <option value="gemini">Gemini</option>
-                  <option value="custom">通用</option>
+                  <option value="custom">HTTP/HTTPS</option>
                 </select>
                 <input
                   :id="index === 0 ? 'f-url' : `f-url-${index}`"
@@ -427,6 +433,7 @@ function addTag(event: Event) {
                   type="button"
                   class="icon-action remove-action"
                   :data-remove-service="index"
+                  :disabled="form.services.length <= 1"
                   :aria-label="`移除服务 ${index + 1}`"
                   title="移除地址"
                   @click="form.services.splice(index, 1)"
@@ -436,7 +443,7 @@ function addTag(event: Event) {
               </div>
             </div>
             <small class="service-hint"
-              >各协议地址共用同一密钥，仅保存与填写。</small
+              >至少填写一个地址；各协议地址共用同一密钥，仅保存与填写。</small
             >
           </div>
           <div v-if="formKind === 'api'" class="form-field">

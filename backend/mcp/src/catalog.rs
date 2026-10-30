@@ -21,7 +21,7 @@ pub(super) fn tools() -> Vec<Tool> {
         },
         "title": property("Entry name"),
         "account": property("Account or environment, optional"),
-        "url": property("Website or API service URL, optional"),
+        "url": property("Website URL; required for kind=password, optional for generic. For kind=api it is derived from the first service address."),
         "secret": property("Password, API key or token"),
         "notes": property("Notes, optional")
     });
@@ -30,7 +30,7 @@ pub(super) fn tools() -> Vec<Tool> {
     fields["services"] = json!({
         "type": "array",
         "maxItems": 20,
-        "description": "Service addresses sharing this credential's token; url is a derived summary of the first address.",
+        "description": "Service addresses sharing this credential's token; required with at least one address for kind=api (url is derived from the first address).",
         "items": {
             "type": "object",
             "properties": {
@@ -40,6 +40,7 @@ pub(super) fn tools() -> Vec<Tool> {
                 },
                 "protocol": {
                     "type": "string",
+                    "description": "openai/anthropic/gemini for vendor-specific APIs; custom for a standard HTTP/HTTPS endpoint.",
                     "enum": [
                         "openai",
                         "anthropic",
@@ -86,7 +87,7 @@ pub(super) fn tools() -> Vec<Tool> {
         ],
         "additionalProperties": false
     });
-    let create=Tool::new("create_entries","Create a password or API credential. Returns only id, revision and status; never echoes stored fields or secrets.",json!({
+    let create=Tool::new("create_entries","Create a password or API credential. A password requires url (its website); an API credential requires at least one services address. Returns only id, revision and status; never echoes stored fields or secrets.",json!({
     "type": "object",
     "properties": fields,
     "required": [
@@ -110,7 +111,7 @@ pub(super) fn tools() -> Vec<Tool> {
     },
     "additionalProperties": false
 }).as_object().unwrap().clone()).with_annotations(ToolAnnotations::new().read_only(true).destructive(false).open_world(false)),
-        Tool::new("search_entries","Search controlled non-sensitive metadata. Never returns notes or protected values. API keys and tokens both use kind=api.",json!({
+        Tool::new("search_entries","Search controlled non-sensitive metadata. Never returns notes or protected values. API keys and tokens both use kind=api. siteMissing=true means the site is unknown: ask the user, never guess.",json!({
     "type": "object",
     "properties": {
         "query": {
@@ -131,7 +132,7 @@ pub(super) fn tools() -> Vec<Tool> {
     },
     "additionalProperties": false
 }).as_object().unwrap().clone()).with_annotations(ToolAnnotations::new().read_only(true).open_world(false)),
-        Tool::new("get_entries","Read controlled non-sensitive metadata only. Never returns a secret or notes. Use write_credential to use the credential locally.",json!({
+        Tool::new("get_entries","Read controlled non-sensitive metadata only. Never returns a secret or notes. Use write_credential to use the credential locally. siteMissing=true means the site is unknown: ask the user, never guess.",json!({
     "type": "object",
     "properties": {
         "id": {
@@ -143,7 +144,7 @@ pub(super) fn tools() -> Vec<Tool> {
     ],
     "additionalProperties": false
 }).as_object().unwrap().clone()).with_annotations(ToolAnnotations::new().read_only(true).open_world(false)),create,
-        Tool::new("update_entries","Update specified fields only. Read current revision first. Omitted fields including secret remain unchanged. No deletion or category changes.",json!({
+        Tool::new("update_entries","Update specified fields only. Read current revision first. Omitted fields including secret remain unchanged. No deletion or category changes. An entry with siteMissing=true must receive url (password) or services (API) in the same update, or the update is rejected.",json!({
     "type": "object",
     "properties": fields,
     "required": [

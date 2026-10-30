@@ -1,4 +1,15 @@
-import type { Entry, ApiProtocol } from "../types/models";
+import type { Entry, ApiService } from "../types/models";
+export const emptyService = (): ApiService => ({
+  id: "",
+  protocol: "custom",
+  url: "",
+});
+const servicesFor = (entry?: Entry) => {
+  if (!entry) return [emptyService()];
+  if (entry.kind === "api" && entry.services.length === 0)
+    return [emptyService()];
+  return entry.services.map((service) => ({ ...service }));
+};
 export const fieldsFor = (entry?: Entry) => ({
   tags: [...(entry?.tags ?? [])],
   database: entry?.database
@@ -10,7 +21,5 @@ export const fieldsFor = (entry?: Entry) => ({
   documentationUrl: entry?.documentationUrl ?? "",
   secret: "",
   notes: entry?.notes ?? "",
-  services: entry
-    ? entry.services.map((service) => ({ ...service }))
-    : [{ id: "", protocol: "openai" as ApiProtocol, url: "" }],
+  services: servicesFor(entry),
 });

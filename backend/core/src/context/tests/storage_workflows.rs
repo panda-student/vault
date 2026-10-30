@@ -81,8 +81,9 @@ fn multiple_service_addresses_roundtrip_without_losing_secret() {
         serde_json::json!({"id":entry.id,"expectedRevision":2,"services":[]}),
     )
     .unwrap();
-    let cleared = vault.update(patch).unwrap();
-    assert!(cleared.services.is_empty() && cleared.url.is_empty());
+    let error = vault.update(patch).unwrap_err();
+    assert_eq!(error.code, "INVALID_INPUT");
+    assert_eq!(error.details.unwrap()[0].field, "services");
 }
 #[test]
 fn invalid_service_sets_do_not_commit_partial_batch() {
@@ -397,6 +398,7 @@ mod trash {
     fn input() -> EntryInput {
         serde_json::from_value(serde_json::json!({
             "kind":"password","title":"trash fixture","secret":"trash-fixture-secret",
+            "url":"https://trash.example.invalid",
             "account":"fixture-user","notes":"retained note"
         }))
         .unwrap()

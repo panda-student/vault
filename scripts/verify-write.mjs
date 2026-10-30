@@ -36,7 +36,7 @@ const helper=async(action,state,editor,file)=>{
 try{
  report.executableSha256=createHash('sha256').update(await readFile(executable)).digest('hex');
  await client.connect(transport);
- const created=await call('create_entries',{kind:'password',title:'Isolated native writing fixture',secret,account:'fixture-account'});
+ const created=await call('create_entries',{kind:'password',title:'Isolated native writing fixture',url:'https://example.invalid',secret,account:'fixture-account'});
  const args={credentialId:created.value.id,field:'secret'};
  const file=join(directory,'direct.txt');
  let result=await call('write_credential',{...args,target:{type:'file',path:file,template:'TOKEN={{credential}}\nkeep=true\n'}});

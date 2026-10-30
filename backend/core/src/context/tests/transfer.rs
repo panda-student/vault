@@ -95,6 +95,49 @@ fn import_reports_file_row_and_rolls_back_every_entry() {
 }
 
 #[test]
+fn imported_legacy_entry_is_flagged_and_the_next_update_requires_a_site() {
+    let dir = tempfile::tempdir().unwrap();
+    let desktop = open(dir.path(), false).unwrap();
+    let path = dir.path().join("legacy.csv");
+    std::fs::write(
+        &path,
+        b"name,url,username,password,note\r\nLegacy account,,alice,pw,\r\n",
+    )
+    .unwrap();
+    let imported: Value = desktop
+        .call(Operation::Import(TransferImportArgs {
+            path: path.to_string_lossy().into_owned(),
+            passphrase: None,
+        }))
+        .unwrap();
+    assert_eq!(imported["imported"], 1);
+    let entry = desktop.service.storage.list("", None).unwrap().remove(0);
+    assert!(entry.url.is_empty());
+    let read: Value = desktop
+        .mcp_session()
+        .execute(Operation::Read(vec![entry.id.clone()]))
+        .unwrap();
+    assert_eq!(read[0]["siteMissing"], true);
+    let patch: vault_contracts::credentials::EntryPatch = serde_json::from_value(json!({
+        "id":entry.id,"expectedRevision":entry.revision,"title":"renamed"
+    }))
+    .unwrap();
+    let error = desktop.execute(Operation::Update(vec![patch])).unwrap_err();
+    assert_eq!(error.details.unwrap()[0].field, "url");
+    let patch: vault_contracts::credentials::EntryPatch = serde_json::from_value(json!({
+        "id":entry.id,"expectedRevision":entry.revision,"url":"https://legacy.example.invalid"
+    }))
+    .unwrap();
+    desktop.execute(Operation::Update(vec![patch])).unwrap();
+    let read: Value = desktop
+        .mcp_session()
+        .execute(Operation::Read(vec![entry.id]))
+        .unwrap();
+    assert_eq!(read[0]["siteMissing"], false);
+    assert_eq!(read[0]["url"], "https://legacy.example.invalid");
+}
+
+#[test]
 fn inspect_describes_plain_and_encrypted_files_without_secrets() {
     let dir = tempfile::tempdir().unwrap();
     let desktop = open(dir.path(), false).unwrap();

@@ -4,9 +4,10 @@ use vault_contracts::operations::FieldRequest;
 use vault_contracts::organization::{Organization, TrashEntry};
 use vault_contracts::{credentials::*, filling::CaptureRequest, operations::Search};
 fn input(title: &str) -> EntryInput {
-    serde_json::from_value(
-        json!({"kind":"password","title":title,"secret":"FAKE_CORE_TEST_SECRET_8192"}),
-    )
+    serde_json::from_value(json!({
+        "kind":"password","title":title,"url":"https://example.invalid",
+        "secret":"FAKE_CORE_TEST_SECRET_8192"
+    }))
     .unwrap()
 }
 
@@ -16,6 +17,7 @@ fn documentation_address_is_separate_persistent_and_patch_compatible() {
     let desktop = open(directory.path(), false).unwrap();
     let mut value = input("documentation fixture");
     value.kind = Kind::Api;
+    value.url.clear();
     value.services = vec![vault_contracts::credentials::ApiService {
         id: String::new(),
         protocol: vault_contracts::credentials::ApiProtocol::Openai,

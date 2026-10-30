@@ -29,12 +29,12 @@ const policy=async(changes={},enabled=true)=>run('python',['-c',inject,join(data
 try {
  await client.connect(transport);
  check('default-twelve-tools',(await names()).length===12);
- const created=await call('create_entries',{kind:'password',title:'Permission fixture',secret});
+ const created=await call('create_entries',{kind:'password',title:'Permission fixture',url:'https://permission.invalid',secret});
  const {id,revision}=created.value;
  check('core-mutation-projection-is-minimal',!created.failed&&Object.keys(created.value).sort().join(',')==='id,revision,status');
  const scenarios=[
   ['readMetadata',['search_entries','get_entries'],[['get_entries',{id}],['search_entries',{query:'Permission'}]]],
-  ['create',['create_entries'],[['create_entries',{kind:'password',title:'denied',secret}]]],
+  ['create',['create_entries'],[['create_entries',{kind:'password',title:'denied',url:'https://permission.invalid',secret}]]],
   ['update',['update_entries'],[['update_entries',{id,expectedRevision:revision,title:'denied'}]]],
   ['delete',['delete_entries'],[['delete_entries',{id,expectedRevision:revision}]]],
   ['fillInput',['capture_fill_target'],[['capture_fill_target',{}],['write_credential',{credentialId:id,field:'secret',target:{type:'input',targetId:'invalid'}}]]],
@@ -61,7 +61,7 @@ try {
  check('master-off-rejects-existing-connection',(await call('get_mcp_config')).value.code==='MCP_DISABLED');
  await policy();
  const current=await call('get_entries',{id});check('denied-mutations-preserve-original-entry',!current.failed&&current.value.revision===revision&&current.value.title==='Permission fixture');
- const made=await call('create_entries',{items:[{kind:'password',title:'scoped allowed',tags:['work'],secret},{kind:'password',title:'scoped hidden',tags:['work','production'],secret}]});
+ const made=await call('create_entries',{items:[{kind:'password',title:'scoped allowed',url:'https://permission.invalid',tags:['work'],secret},{kind:'password',title:'scoped hidden',url:'https://permission.invalid',tags:['work','production'],secret}]});
  const [allowed,hidden]=made.value.results;
  const objectPolicy=async patch=>run('python',['-c',inject,join(data,'vault.db'),JSON.stringify(patch)],{windowsHide:true});
  await objectPolicy({mcpAccess:false,mcpTagRules:{work:{access:true},production:{access:false}},mcpEntryRules:{}});
@@ -74,7 +74,7 @@ try {
  check('scoped-batch-update-rolls-back',deniedUpdate.failed&&(await call('get_entries',{id:allowed.id})).value.title==='scoped allowed');
  const deniedDelete=await call('delete_entries',{items:[{id:allowed.id,expectedRevision:allowed.revision},{id:hidden.id,expectedRevision:hidden.revision}]});check('scoped-batch-delete-rolls-back',deniedDelete.failed&&!(await call('get_entries',{id:allowed.id})).failed);
  await objectPolicy({mcpTagRules:{},mcpEntryRules:{},mcpAccess:true});
- const spoof=await call('create_entries',{kind:'password',title:'spoof',secret,caller:'desktop'});check('caller-payload-cannot-forge-identity',spoof.failed&&spoof.value.code==='INVALID_INPUT');
+ const spoof=await call('create_entries',{kind:'password',title:'spoof',url:'https://permission.invalid',secret,caller:'desktop'});check('caller-payload-cannot-forge-identity',spoof.failed&&spoof.value.code==='INVALID_INPUT');
  const offline=await call('export_entries',{});check('export-requires-online-desktop',offline.failed&&offline.value.code==='DESKTOP_OFFLINE');
  check('all-output-excludes-protected-plaintext-and-base64',outputs.every(text=>!text.includes(secret)&&!text.includes(Buffer.from(secret).toString('base64'))));
  report.passed=true;

@@ -1,5 +1,6 @@
 //! Transport adapter only. Caller identity is already bound to AppState.core.
-use crate::app::AppState;
+use crate::app::{AppState, window};
+use tauri::Manager;
 #[tauri::command]
 pub(crate) async fn rpc(
     app: tauri::AppHandle,
@@ -17,4 +18,28 @@ pub(crate) async fn rpc(
         app.exit(0);
     }
     Ok(response)
+}
+
+/// Brings the desktop window forward for an AI export request that needs a passphrase.
+#[tauri::command]
+pub(crate) fn export_attention(
+    app: tauri::AppHandle,
+    active: bool,
+) -> std::result::Result<(), String> {
+    let Some(main) = app.get_webview_window("main") else {
+        return Ok(());
+    };
+    if active {
+        window::show_main(&app);
+        main.set_always_on_top(true)
+            .map_err(|error| error.to_string())?;
+        main.request_user_attention(Some(tauri::UserAttentionType::Critical))
+            .map_err(|error| error.to_string())?;
+    } else {
+        main.set_always_on_top(false)
+            .map_err(|error| error.to_string())?;
+        main.request_user_attention(None)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }

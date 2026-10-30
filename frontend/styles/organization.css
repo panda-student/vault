@@ -68,6 +68,18 @@
   background: white;
   color: #596375;
 }
+.missing-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: #596375;
+  cursor: pointer;
+}
+.missing-filter input {
+  accent-color: var(--accent);
+}
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -84,6 +96,10 @@
   padding: 3px 6px;
   overflow-wrap: anywhere;
   max-width: 100%;
+}
+.missing-chip {
+  color: #9a5b00;
+  background: #fff0d4;
 }
 
 .entry-select {

@@ -45,6 +45,10 @@ export async function pickExportPath(name: string): Promise<string | null> {
     filters: [{ name: "凭据导出文件", extensions: [extension] }],
   });
 }
+/** Brings the window forward while an AI export waits for the user's passphrase. */
+export function setExportAttention(active: boolean): Promise<void> {
+  return tauriInvoke<void>("export_attention", { active });
+}
 export async function pickImportPath(): Promise<string | null> {
   const selected = await open({
     multiple: false,

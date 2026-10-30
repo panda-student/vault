@@ -1,6 +1,6 @@
 //! AI-safe projection: redact before filtering to prevent a search oracle.
 use vault_contracts::{
-    credentials::Settings,
+    credentials::{Kind, Settings},
     errors::{AppError, Result},
     operations::Search,
 };
@@ -24,6 +24,8 @@ pub(crate) fn metadata(core: &CredentialService, guard: &SharedGuard, id: &str) 
             "database":summary.database,
             "revision":summary.revision,
             "pinned":summary.pinned,
+            "siteMissing":matches!(summary.kind, Kind::Password | Kind::Api)
+                && summary.url.trim().is_empty(),
             "createdAt":summary.created_at,
             "updatedAt":summary.updated_at
         }),

@@ -58,7 +58,7 @@ while($true){
  desktop.once('exit',()=>{desktopExitedAt=Date.now();});
  await sleep(3000);
  const a=await connect(),b=await connect();const ids=transports.map(t=>t.pid);
- const entry=await call(a,'create_entries',{kind:'password',title:'Installer fixture',secret:'FAKE_INSTALLER_ONLY_6134'});
+ const entry=await call(a,'create_entries',{kind:'password',title:'Installer fixture',url:'https://example.invalid',secret:'FAKE_INSTALLER_ONLY_6134'});
  // Exercise the old application's close-to-tray setting as well as a custom data path.
  await run('python',['-c',`import sqlite3,json,sys
 c=sqlite3.connect(sys.argv[1]);s=json.loads(c.execute("SELECT value FROM metadata WHERE name='settings'").fetchone()[0]);s['closeToTray']=True;c.execute("UPDATE metadata SET value=? WHERE name='settings'",(json.dumps(s).encode(),));c.commit();c.close()`,join(data,'vault.db')],{windowsHide:true});
@@ -67,7 +67,7 @@ c=sqlite3.connect(sys.argv[1]);s=json.loads(c.execute("SELECT value FROM metadat
  if(process.env.VAULT_TEST_DRAIN==='1'){
   writeLock=spawn('python',['-c',"import sqlite3,sys,time; c=sqlite3.connect(sys.argv[1]); c.execute('BEGIN IMMEDIATE'); print('locked',flush=True); time.sleep(3); c.commit(); c.close()",join(data,'vault.db')],{windowsHide:true,stdio:['ignore','pipe','ignore']});
   await new Promise((resolve,reject)=>{writeLock.stdout.once('data',resolve);writeLock.once('error',reject);});
-  inFlight=call(a,'create_entries',{kind:'password',title:'accepted installer in-flight write',secret:'FAKE_IN_FLIGHT_WRITE_8153'}).then(value=>{requestFinishedAt=Date.now();return value;});
+  inFlight=call(a,'create_entries',{kind:'password',title:'accepted installer in-flight write',url:'https://example.invalid',secret:'FAKE_IN_FLIGHT_WRITE_8153'}).then(value=>{requestFinishedAt=Date.now();return value;});
   inFlight.catch(()=>{});
   await sleep(150);
   check('MCP write is still in flight when installation starts',requestFinishedAt===undefined);

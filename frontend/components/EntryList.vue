@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { UnwrapRef } from "vue";
 import type { VaultUI } from "../composables/useVault";
-import { kindName } from "../utils/display";
+import { kindName, missingSite } from "../utils/display";
 const props = defineProps<{ v: UnwrapRef<VaultUI> }>();
 defineEmits<{ organize: [kind: "tag", previous?: string] }>();
 </script>
@@ -24,6 +24,10 @@ defineEmits<{ organize: [kind: "tag", previous?: string] }>();
         <option value="database">数据库</option>
         <option value="generic">通用</option>
       </select>
+      <label class="missing-filter">
+        <input id="missing-filter" v-model="v.missingOnly" type="checkbox" />
+        缺少网站<span v-if="v.missingCount">（{{ v.missingCount }}）</span>
+      </label>
       <div class="chips">
         <button
           v-if="v.tagFilter"
@@ -66,6 +70,8 @@ defineEmits<{ organize: [kind: "tag", previous?: string] }>();
                 : entry.url
             }}</small
             ><span class="chips"
+              ><span v-if="missingSite(entry)" class="chip missing-chip"
+                >缺少网站</span
               ><span v-for="tag in entry.tags" :key="tag" class="chip">{{
                 tag
               }}</span></span

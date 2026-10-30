@@ -15,7 +15,7 @@ fn parallel_rpc_reads_and_writes_share_one_consistent_repository() {
                 barrier.wait();
                 for index in 0..15 {
                     let (method, params) = if worker < 4 {
-                        ("credentials.create", json!({"kind":"password","title":format!("fixture-{worker}-{index}"),"secret":"FAKE_PARALLEL_ONLY"}))
+                        ("credentials.create", json!({"kind":"password","title":format!("fixture-{worker}-{index}"),"url":"https://example.invalid","secret":"FAKE_PARALLEL_ONLY"}))
                     } else {
                         (["credentials.list", "settings.get", "tags.list"][index % 3], json!({}))
                     };
@@ -66,7 +66,7 @@ fn rpc_preserves_ids_and_distinguishes_protocol_errors() {
 fn notifications_execute_once_and_batches_omit_notification_results() {
     let directory = tempfile::tempdir().unwrap();
     let core = bootstrap::open(directory.path(), false).unwrap();
-    let create = json!({"jsonrpc":"2.0","method":"credentials.create","params":{"kind":"password","title":"notification fixture","secret":"FAKE_RPC_ONLY"}});
+    let create = json!({"jsonrpc":"2.0","method":"credentials.create","params":{"kind":"password","title":"notification fixture","url":"https://example.invalid","secret":"FAKE_RPC_ONLY"}});
     assert!(core.handle_rpc(create).is_none());
     let response = core
         .handle_rpc(json!([
@@ -81,6 +81,36 @@ fn notifications_execute_once_and_batches_omit_notification_results() {
     assert_eq!(response[1]["error"]["code"], -32601);
 }
 #[test]
+fn writes_without_a_site_name_the_missing_field() {
+    let directory = tempfile::tempdir().unwrap();
+    let core = bootstrap::open(directory.path(), false).unwrap();
+    for (kind, field) in [("password", "url"), ("api", "services")] {
+        let response = call(
+            &core,
+            json!(1),
+            "credentials.create",
+            json!({"kind":kind,"title":"missing site","secret":"FAKE_SITE_ONLY"}),
+        );
+        assert_eq!(response["error"]["code"], -32602);
+        assert_eq!(response["error"]["data"]["details"][0]["field"], field);
+    }
+    let created = call(
+        &core,
+        json!(2),
+        "credentials.create",
+        json!({"kind":"password","title":"known site","url":"https://example.invalid","secret":"FAKE_SITE_ONLY"}),
+    );
+    assert_eq!(created["result"]["url"], "https://example.invalid");
+    let metadata = call(
+        &core.mcp_session(),
+        json!(3),
+        "credentials.get",
+        json!({"id":created["result"]["id"]}),
+    );
+    assert_eq!(metadata["result"]["siteMissing"], false);
+}
+
+#[test]
 fn rpc_identity_is_bound_and_mcp_never_reads_plaintext() {
     let directory = tempfile::tempdir().unwrap();
     let core = bootstrap::open(directory.path(), false).unwrap();
@@ -89,7 +119,7 @@ fn rpc_identity_is_bound_and_mcp_never_reads_plaintext() {
         &core,
         json!(1),
         "credentials.create",
-        json!({"kind":"password","title":"fixture","secret":"FAKE_RPC_SECRET_429"}),
+        json!({"kind":"password","title":"fixture","url":"https://example.invalid","secret":"FAKE_RPC_SECRET_429"}),
     )["result"]
         .clone();
     let args = json!({"id":saved["id"],"expectedRevision":saved["revision"]});
@@ -125,7 +155,7 @@ fn rpc_identity_is_bound_and_mcp_never_reads_plaintext() {
             &mcp,
             json!(8),
             "credentials.create",
-            json!({"kind":"password","title":"denied","secret":"FAKE_DENIED_ONLY"})
+            json!({"kind":"password","title":"denied","url":"https://example.invalid","secret":"FAKE_DENIED_ONLY"})
         )["error"]["data"]["code"],
         "PERMISSION_DENIED"
     );
@@ -134,7 +164,7 @@ fn rpc_identity_is_bound_and_mcp_never_reads_plaintext() {
             &core,
             json!(9),
             "credentials.create",
-            json!({"kind":"password","title":"allowed","secret":"FAKE_ALLOWED_ONLY"})
+            json!({"kind":"password","title":"allowed","url":"https://example.invalid","secret":"FAKE_ALLOWED_ONLY"})
         )
         .get("result")
         .is_some()

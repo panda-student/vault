@@ -122,6 +122,15 @@ dialog h2 {
   margin: 12px 0 22px;
   line-height: 1.8;
 }
+.dialog-notice {
+  font-size: 12px;
+  font-weight: 650;
+  color: #9a5b00;
+  background: #fff0d4;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 10px 0 0;
+}
 .form-field {
   margin-bottom: 14px;
 }

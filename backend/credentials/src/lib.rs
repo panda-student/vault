@@ -36,8 +36,13 @@ impl CredentialService {
         input: Vec<EntryInput>,
         authorization: &dyn ChangeAuthorizer,
     ) -> Result<Vec<EntrySummary>> {
-        self.repository
-            .create_many(input, &policy::CredentialPolicy { authorization })
+        self.repository.create_many(
+            input,
+            &policy::CredentialPolicy {
+                authorization,
+                site: validation::SiteRule::Required,
+            },
+        )
     }
 
     pub fn export_entries(&self, include_trash: bool) -> Result<Vec<EntryInput>> {
@@ -45,8 +50,9 @@ impl CredentialService {
     }
 
     /// Normalize one imported candidate so the caller can report its file row.
+    /// Legacy files may omit the site; the next update must fill it.
     pub fn prepare_import(&self, value: &mut EntryInput) -> Result<()> {
-        validation::prepare(value)
+        validation::prepare(value, validation::SiteRule::LegacyAllowed)
     }
 
     pub fn import_many(
@@ -54,8 +60,13 @@ impl CredentialService {
         input: Vec<EntryInput>,
         authorization: &dyn ChangeAuthorizer,
     ) -> Result<Vec<EntrySummary>> {
-        self.repository
-            .import_many(input, &policy::CredentialPolicy { authorization })
+        self.repository.import_many(
+            input,
+            &policy::CredentialPolicy {
+                authorization,
+                site: validation::SiteRule::LegacyAllowed,
+            },
+        )
     }
 
     pub fn update_many(
@@ -63,8 +74,13 @@ impl CredentialService {
         patches: Vec<EntryPatch>,
         authorization: &dyn ChangeAuthorizer,
     ) -> Result<Vec<EntrySummary>> {
-        self.repository
-            .update_many(patches, &policy::CredentialPolicy { authorization })
+        self.repository.update_many(
+            patches,
+            &policy::CredentialPolicy {
+                authorization,
+                site: validation::SiteRule::Required,
+            },
+        )
     }
 
     pub fn delete_many(
@@ -72,8 +88,13 @@ impl CredentialService {
         entries: Vec<EntryVersion>,
         authorization: &dyn ChangeAuthorizer,
     ) -> Result<Vec<String>> {
-        self.repository
-            .delete_many(entries, &policy::CredentialPolicy { authorization })
+        self.repository.delete_many(
+            entries,
+            &policy::CredentialPolicy {
+                authorization,
+                site: validation::SiteRule::Required,
+            },
+        )
     }
     pub fn pin(&self, id: &str, revision: i64, pinned: bool) -> Result<EntrySummary> {
         self.repository.pin(id, revision, pinned)
