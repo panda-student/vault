@@ -61,6 +61,8 @@
 
 0.6.1 及更早版本使用签名 ZIP 清单（schema=2），无法自动升级到本协议。首次升级需要手动运行新版 `vault-<版本>-setup.exe`，之后的版本可在线更新。升级前请保存界面修改并备份 data。
 
+签名密钥初始化与恢复：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-updater.ps1 -UploadSecret`（只初始化/恢复本机密钥并上传 Secret，不打印私钥）。
+
 ## 验证
 
 Rust 测试覆盖签名、版本、哈希、跨进程锁和清单字段。`scripts/preflight.mjs` 串联构建、安装包打包、安装覆盖、交接、回退和排空验收。
