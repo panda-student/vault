@@ -52,14 +52,12 @@ jobs:
         with:
           name: vault-windows-${{ github.sha }}
           path: |
-            artifacts/vault-*.zip
             artifacts/vault-*-setup.exe
             artifacts/installer-size.json
             artifacts/installer-verification.json
             artifacts/installer-handoff-verification.json
             artifacts/installer-rollback-verification.json
             artifacts/installer-drain-verification.json
-            artifacts/size.json
           retention-days: 7
       - name: Sign stable update metadata
         if: startsWith(github.ref, 'refs/tags/v')
@@ -68,7 +66,7 @@ jobs:
         shell: pwsh
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          node scripts/update-release.mjs manifest "artifacts/vault-$version/vault.exe" artifacts/latest.json "${{ github.ref_name }}"
+          node scripts/update-release.mjs manifest "artifacts/vault-$version-setup.exe" artifacts/latest.json "${{ github.ref_name }}" "docs/releases/$version.md"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Publish GitHub Release attachments
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
@@ -79,7 +77,7 @@ jobs:
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $stable = '${{ github.ref }}'.StartsWith('refs/tags/v')
           $tag = if ($stable) { '${{ github.ref_name }}' } else { 'preview-' + '${{ github.sha }}'.Substring(0, 12) }
-          $files = @("artifacts/vault-$version.zip", "artifacts/vault-$version-setup.exe", 'artifacts/size.json', 'artifacts/installer-size.json')
+          $files = @("artifacts/vault-$version-setup.exe", 'artifacts/installer-size.json')
           if ($stable) { $files += 'artifacts/latest.json' }
           $lines = $files | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + (Split-Path -Leaf $_) }
           $lines | Set-Content -Encoding utf8NoBOM artifacts/SHA256SUMS
@@ -93,11 +91,9 @@ jobs:
             @"
           ## 下载选择
           - vault-$version-setup.exe：安装向导，默认 D:\vault，可修改目录；提供开始菜单和卸载入口，卸载保留密码库。
-          - vault-$version.zip：便携版，解压后启动 vault.exe。
 
           ## 升级提示
-          0.5.6 及以前版本使用本次安装包覆盖升级一次，统一为小写 vault.exe；安装器自动等待 MCP 操作完成、关闭旧桌面并在安装后恢复原数据目录与连接，无需退出 Trae。0.5.2 及以前的旧直连 MCP 首次迁移仍需重连。请先保存界面修改并备份 data。
-          0.5.4 起安装版和便携版都从签名 ZIP 在线更新，不再提供独立 vault.exe 附件。
+          应用内更新下载并运行本签名安装包，安装器自动等待 MCP 操作完成、关闭旧桌面并在安装后恢复原数据目录与连接，无需退出 AI 客户端。旧版本首次升级到安装包更新方式时需要手动运行一次本安装包。请先保存界面修改并备份 data。
           Windows 10/11 x64，需要系统已有 WebView2 Runtime。密码库仍绑定原 Windows 用户和电脑。
           "@ | Set-Content -Encoding utf8NoBOM artifacts/release-notes.md
             gh release create $tag --repo '${{ github.repository }}' --target '${{ github.sha }}' --draft --title "vault $version$(if (!$stable) { ' · Preview' })" --notes-file artifacts/release-notes.md

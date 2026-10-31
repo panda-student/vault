@@ -27,16 +27,10 @@ const check=(name,ok)=>{report.checks.push({name,passed:!!ok});assert.ok(ok,name
 const keyCommand="Add-Type -AssemblyName System.Security; $p=Join-Path $env:USERPROFILE '.codex/secrets/local-password-manager/update-signing-key.dpapi'; $b=[Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes($p),$null,[Security.Cryptography.DataProtectionScope]::CurrentUser); [Console]::Write([Text.Encoding]::UTF8.GetString($b)); [Array]::Clear($b,0,$b.Length)";
 const secret=(await run('powershell.exe',['-NoProfile','-Command',keyCommand],{windowsHide:true})).stdout.trim();
 const privateKey=createPrivateKey({key:Buffer.from(secret,'base64'),format:'der',type:'pkcs8'});
-async function zipRelease(bytes,version){
- const folder=await mkdtemp(join(appRoot,'archive-'));
- const member=join(folder,`vault-${version}`);await mkdir(member);await writeFile(join(member,'vault.exe'),bytes);
- const archive=join(folder,'portable.zip');
- await run('powershell.exe',['-NoProfile','-Command','Compress-Archive -LiteralPath $env:ZIP_MEMBER -DestinationPath $env:ZIP_OUTPUT'],{windowsHide:true,env:{...process.env,ZIP_MEMBER:member,ZIP_OUTPUT:archive}});
- return await readFile(archive);
-}
-function signedPayload(bytes,archive,version,notes){return Buffer.from(JSON.stringify({schema:2,version,platform:'windows-x86_64',url:`https://github.com/panda-student/vault/releases/download/v${version}/vault-${version}.zip`,sha256:createHash('sha256').update(bytes).digest('hex'),size:bytes.length,archive_sha256:createHash('sha256').update(archive).digest('hex'),archive_size:archive.length,notes}));}
-const archive=await zipRelease(binary,toVersion);
-const payload=signedPayload(binary,archive,toVersion,'原生 ZIP 更新验收：保留凭据、权限和 MCP 连接。');
+// Update payloads are the signed NSIS installer itself, not a ZIP or a bare exe.
+function signedPayload(bytes,version,notes){return Buffer.from(JSON.stringify({schema:3,version,platform:'windows-x86_64',url:`https://github.com/panda-student/vault/releases/download/v${version}/vault-${version}-setup.exe`,sha256:createHash('sha256').update(bytes).digest('hex'),size:bytes.length,notes}));}
+const archive=binary;
+const payload=signedPayload(binary,toVersion,'原生安装包更新验收：保留凭据、权限和 MCP 连接。');
 const valid={payload:payload.toString('base64'),signature:sign(null,payload,privateKey).toString('base64')};
 let activeEnvelope=valid,activeBinary=archive;
 let mode='bad-signature';
@@ -45,7 +39,7 @@ const server=createServer((req,res)=>{
   if(mode==='offline'){res.writeHead(503);res.end();return;}
   res.setHeader('Content-Type','application/json');res.end(JSON.stringify(mode==='bad-signature'?{...activeEnvelope,signature:Buffer.alloc(64).toString('base64')}:activeEnvelope));return;
  }
- if(/^\/vault-[\d.]+\.zip$/.test(req.url)){
+ if(/^\/vault-[\d.]+-setup\.exe$/.test(req.url)){
   const bytes=mode==='corrupt'?Buffer.from(activeBinary):activeBinary;if(mode==='corrupt')bytes[bytes.length-1]^=1;
   res.setHeader('Content-Length',bytes.length);let offset=0;
   const timer=setInterval(()=>{if(offset>=bytes.length){clearInterval(timer);res.end();return;}const end=Math.min(bytes.length,offset+256*1024);res.write(bytes.subarray(offset,end));offset=end;},15);
@@ -121,8 +115,8 @@ try{
  const failingSource=join(root,'failed-start.rs'), failingBinary=join(root,'failed-start.exe');
  await writeFile(failingSource,'#![windows_subsystem="windows"]\nfn main(){std::process::exit(1);}\n');
  await run(join(process.env.USERPROFILE,'.cargo/bin/rustc.exe'),['--crate-name','failed_start','-C','opt-level=s','-C','strip=symbols',failingSource,'-o',failingBinary],{windowsHide:true});
- const failedBytes=await readFile(failingBinary);activeBinary=await zipRelease(failedBytes,failedVersion);
- const failedPayload=signedPayload(failedBytes,activeBinary,failedVersion,'仅验收：启动失败应回退');
+ const failedBytes=await readFile(failingBinary);activeBinary=failedBytes;
+ const failedPayload=signedPayload(failedBytes,failedVersion,'仅验收：启动失败应回退');
  activeEnvelope={payload:failedPayload.toString('base64'),signature:sign(null,failedPayload,privateKey).toString('base64')};
  await click('#check-update');await waitPhase('available');await click('#download-update');await waitPhase('ready');
  await click('#install-update');await click('#confirm-install-update');ws.close();await pause(1600);session=`vault-update-rollback-${randomUUID()}`;await connect();

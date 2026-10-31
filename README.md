@@ -2,7 +2,7 @@
 
 Windows 便携凭据管理器：本地加密保存，人工直接编辑，AI 按引用填写。**AI 接口不返回密码、API Key 或 Token 原文。**
 
-[下载 Windows 安装版 / 便携版](https://github.com/panda-student/vault/releases/latest) · [验收记录](docs/RELEASE.md)
+[下载 Windows 安装包](https://github.com/panda-student/vault/releases/latest) · [验收记录](docs/RELEASE.md)
 
 ![应用界面](docs/screenshots/current-ui.png)
 
@@ -24,7 +24,7 @@ Windows 便携凭据管理器：本地加密保存，人工直接编辑，AI 按
 
 安装版下载 `vault-<版本>-setup.exe`，双击按向导安装，默认 `D:\vault`，可以改目录；无 D 盘时使用当前用户的本地应用目录。开始菜单提供快捷方式，Windows 设置提供卸载入口；卸载保留 `data` 密码库。
 
-便携版下载 `vault-<版本>.zip`。建议将便携包解压到 `D:\vault`，然后启动 `D:\vault\vault.exe`，无需安装。要求 Windows 10/11 x64，系统已有 Microsoft Edge WebView2 Runtime；不捆绑运行时，也不依赖 Node.js、Python 或 Rust。
+下载 `vault-<版本>-setup.exe` 安装包，默认安装到 `D:\vault`，可在向导中修改目录。要求 Windows 10/11 x64，系统已有 Microsoft Edge WebView2 Runtime；不捆绑运行时，也不依赖 Node.js、Python 或 Rust。
 
 数据默认保存在 EXE 旁的 `data` 目录，首次运行为空库。设置页提供当前路径对应的 MCP 配置。移动程序后请更新 AI 客户端配置。
 

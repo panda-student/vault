@@ -1,34 +1,32 @@
 use super::*;
 use ed25519_dalek::{Signer, SigningKey};
+use sha2::{Digest, Sha256};
 
-#[test]
-fn zip_reader_rejects_noncanonical_member_name() {
-    use std::io::Write;
-    let dir = tempfile::tempdir().unwrap();
-    let archive = dir.path().join("noncanonical.zip");
-    let mut zip = zip::ZipWriter::new(File::create(&archive).unwrap());
-    zip.start_file(
-        "vault-0.5.5/Vault.exe",
-        zip::write::SimpleFileOptions::default(),
-    )
-    .unwrap();
-    zip.write_all(b"MZtest").unwrap();
-    zip.finish().unwrap();
-    let output = dir.path().join("payload.exe");
-    assert!(extract_update_payload(&archive, &output, "vault-0.5.5/vault.exe", 6).is_err());
-    assert!(!output.exists());
+fn manifest_json(version: &str, bytes: &[u8]) -> Manifest {
+    Manifest {
+        schema: 3,
+        version: version.into(),
+        platform: "windows-x86_64".into(),
+        url: format!(
+            "https://github.com/panda-student/vault/releases/download/v{version}/vault-{version}-setup.exe"
+        ),
+        sha256: format!("{:x}", Sha256::digest(bytes)),
+        size: bytes.len() as u64,
+        notes: "test".into(),
+    }
 }
-
+fn sign_manifest(manifest: &Manifest) -> Envelope {
+    let key = SigningKey::from_bytes(&[27; 32]);
+    let payload = serde_json::to_vec(manifest).unwrap();
+    Envelope {
+        payload: STANDARD.encode(&payload),
+        signature: STANDARD.encode(key.sign(&payload).to_bytes()),
+    }
+}
 fn signed(version: &str, bytes: &[u8]) -> (Envelope, String) {
     let key = SigningKey::from_bytes(&[27; 32]);
-    let payload = serde_json::to_vec(&Manifest { schema: 2, version: version.into(), platform: "windows-x86_64".into(), url: format!("https://github.com/panda-student/vault/releases/download/v{version}/vault-{version}.zip"), sha256: format!("{:x}", Sha256::digest(bytes)), size: bytes.len() as u64, notes: "test".into(), archive_sha256: "a".repeat(64), archive_size: 100 }).unwrap();
-    (
-        Envelope {
-            payload: STANDARD.encode(&payload),
-            signature: STANDARD.encode(key.sign(&payload).to_bytes()),
-        },
-        STANDARD.encode(key.verifying_key().to_bytes()),
-    )
+    let envelope = sign_manifest(&manifest_json(version, bytes));
+    (envelope, STANDARD.encode(key.verifying_key().to_bytes()))
 }
 #[test]
 fn signed_payload_rejects_tampering_wrong_key_and_downgrade() {
@@ -41,95 +39,47 @@ fn signed_payload_rejects_tampering_wrong_key_and_downgrade() {
 }
 #[test]
 fn updates_reject_previous_repositories_and_manifest_formats() {
-    let (mut envelope, key) = signed("1.2.3", b"MZtest");
-    let signing_key = SigningKey::from_bytes(&[27; 32]);
-    let mut manifest = decode(&envelope, &key, "1.0.0").unwrap();
-    for (repository, accepted) in [("local-password-manager", false), ("untrusted", false)] {
+    let (_, key) = signed("1.2.3", b"MZtest");
+    let mut manifest = manifest_json("1.2.3", b"MZtest");
+    for repository in ["local-password-manager", "untrusted"] {
         manifest.url = format!(
-            "https://github.com/panda-student/{repository}/releases/download/v1.2.3/vault.exe"
+            "https://github.com/panda-student/{repository}/releases/download/v1.2.3/vault-1.2.3-setup.exe"
         );
-        let payload = serde_json::to_vec(&manifest).unwrap();
-        envelope.payload = STANDARD.encode(&payload);
-        envelope.signature = STANDARD.encode(signing_key.sign(&payload).to_bytes());
-        assert_eq!(decode(&envelope, &key, "1.0.0").is_ok(), accepted);
+        assert!(decode(&sign_manifest(&manifest), &key, "1.0.0").is_err());
     }
+    manifest.url = manifest_json("1.2.3", b"MZtest").url;
+    manifest.schema = 2;
+    assert!(decode(&sign_manifest(&manifest), &key, "1.0.0").is_err());
     manifest.schema = 1;
-    let payload = serde_json::to_vec(&manifest).unwrap();
-    envelope.payload = STANDARD.encode(&payload);
-    envelope.signature = STANDARD.encode(signing_key.sign(&payload).to_bytes());
-    assert!(decode(&envelope, &key, "1.0.0").is_err());
+    assert!(decode(&sign_manifest(&manifest), &key, "1.0.0").is_err());
 }
 #[test]
-fn signed_zip_rejects_incomplete_metadata_and_wrong_asset() {
-    let (mut envelope, key) = signed("1.2.3", b"MZtest");
-    let signing_key = SigningKey::from_bytes(&[27; 32]);
-    let manifest = decode(&envelope, &key, "1.0.0").unwrap();
-    let mut invalid = serde_json::to_value(&manifest).unwrap();
-    let variants = [
-        {
-            let mut v = invalid.clone();
-            v.as_object_mut().unwrap().remove("archive_size");
-            v
-        },
-        {
-            let mut v = invalid.clone();
-            v["archive_sha256"] = serde_json::json!("x".repeat(64));
-            v
-        },
-        {
-            let mut v = invalid.clone();
-            v["archive_size"] = serde_json::json!(0);
-            v
-        },
-        {
-            invalid["url"] = serde_json::json!(
-                "https://github.com/panda-student/vault/releases/download/v1.2.3/vault.exe"
-            );
-            invalid
-        },
-    ];
-    for value in variants {
-        let payload = serde_json::to_vec(&value).unwrap();
-        envelope.payload = STANDARD.encode(&payload);
-        envelope.signature = STANDARD.encode(signing_key.sign(&payload).to_bytes());
-        assert!(decode(&envelope, &key, "1.0.0").is_err());
+fn signed_installer_rejects_incomplete_metadata_and_wrong_asset() {
+    let (_, key) = signed("1.2.3", b"MZtest");
+    let manifest = manifest_json("1.2.3", b"MZtest");
+    let mut wrong_asset = manifest.clone();
+    wrong_asset.url =
+        "https://github.com/panda-student/vault/releases/download/v1.2.3/vault.exe".into();
+    let mut empty_hash = manifest.clone();
+    empty_hash.sha256 = "x".repeat(64);
+    let mut tiny = manifest.clone();
+    tiny.size = 1;
+    for variant in [wrong_asset, empty_hash, tiny] {
+        assert!(decode(&sign_manifest(&variant), &key, "1.0.0").is_err());
     }
+    assert!(decode(&sign_manifest(&manifest), &key, "1.0.0").is_ok());
 }
 #[test]
-fn zip_extraction_only_writes_expected_member_and_enforces_size() {
+fn signature_binds_installer_hash_size_and_stable_channel() {
     let dir = tempfile::tempdir().unwrap();
-    let archive = dir.path().join("archive.zip");
-    let output = dir.path().join("payload.exe");
-    let mut zip = zip::ZipWriter::new(File::create(&archive).unwrap());
-    for name in ["vault-1.2.3/vault.exe", "../outside.txt"] {
-        zip.start_file(name, zip::write::SimpleFileOptions::default())
-            .unwrap();
-        zip.write_all(b"MZtest").unwrap();
-    }
-    zip.finish().unwrap();
-    assert!(extract_update_payload(&archive, &output, "vault-1.2.3/vault.exe", 6).is_ok());
-    assert_eq!(fs::read(&output).unwrap(), b"MZtest");
-    assert!(!dir.path().parent().unwrap().join("outside.txt").exists());
-    assert!(extract_update_payload(&archive, &output, "vault-1.2.3/vault.exe", 6).is_err());
-    assert!(
-        extract_update_payload(
-            &archive,
-            &dir.path().join("bad.exe"),
-            "vault-1.2.3/vault.exe",
-            7
-        )
-        .is_err()
-    );
-}
-#[test]
-fn signature_binds_binary_hash_size_and_stable_channel() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("payload.exe");
+    let path = dir.path().join("vault-1.2.3-setup.exe");
     fs::write(&path, b"MZtest").unwrap();
     let (envelope, key) = signed("1.2.3", b"MZtest");
     let manifest = decode(&envelope, &key, "1.0.0").unwrap();
     assert!(verify_binary(&path, &manifest).is_ok());
     fs::write(&path, b"MZevil").unwrap();
+    assert!(verify_binary(&path, &manifest).is_err());
+    fs::write(&path, b"XXtest").unwrap();
     assert!(verify_binary(&path, &manifest).is_err());
     let (preview, key) = signed("1.2.4-beta.1", b"MZtest");
     assert!(decode(&preview, &key, "1.0.0").is_err());

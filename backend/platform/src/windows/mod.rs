@@ -138,14 +138,15 @@ impl WindowsService {
         })
     }
 
+    /// The signed installer does the replacement, MCP drain and rollback itself.
+    /// NSIS reads the raw command line, so `/D=` must stay last and unquoted.
     pub fn launch_update(&self, launch: UpdateLaunch) -> Result<()> {
         use std::os::windows::process::CommandExt;
-        std::process::Command::new(launch.helper)
-            .arg("--apply-update")
-            .arg(launch.plan)
+        std::process::Command::new(launch.installer)
+            .raw_arg(format!("/S /D={}", launch.directory.display()))
             .creation_flags(0x08000000)
             .spawn()
-            .map_err(|_| AppError::new("UPDATE_START", "无法启动更新辅助进程，旧程序继续运行。"))?;
+            .map_err(|_| AppError::new("UPDATE_START", "无法启动安装程序，旧程序继续运行。"))?;
         Ok(())
     }
     pub fn bind_clipboard(&self, port: std::sync::Arc<dyn ClipboardPort>) -> Result<()> {

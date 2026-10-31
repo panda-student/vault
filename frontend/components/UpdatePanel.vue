@@ -100,6 +100,10 @@ async function install() {
     </p>
     <dialog ref="dialog" id="update-dialog">
       <h2>重启并更新到 v{{ status.version }}？</h2>
+      <section class="update-changelog" aria-label="本次更新内容">
+        <h3>v{{ status.version }} 更新内容</h3>
+        <p class="update-notes">{{ status.notes || "暂无更新说明" }}</p>
+      </section>
       <p class="dialog-description">
         程序将退出、替换并重新打开。请先保存修改。已连接的 MCP
         会等待当前操作完成，更新期间暂停内部服务，完成后自动恢复，无需退出 AI
@@ -165,5 +169,19 @@ async function install() {
 }
 .update-details {
   padding-bottom: 4px;
+}
+.update-changelog {
+  margin: 12px 0;
+}
+.update-changelog h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.update-changelog .update-notes {
+  max-height: 240px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #f4f6fb;
 }
 </style>

@@ -10,7 +10,6 @@
     "desktop:dev": "node scripts/tauri.mjs dev",
     "desktop:build": "node scripts/tauri.mjs build --no-bundle",
     "package:installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-installer.ps1",
-    "package:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-portable.ps1",
     "verify:release": "node scripts/verify-package.mjs",
     "verify:integration": "node scripts/verify-next.mjs",
     "verify:permissions": "node scripts/verify-permissions.mjs",

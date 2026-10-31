@@ -21,7 +21,7 @@ pub(crate) fn decode(envelope: &Envelope, key: &str, current: &str) -> Result<Ma
     let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|_| invalid_update())?;
     let version = semver::Version::parse(&manifest.version).map_err(|_| invalid_update())?;
     let current = semver::Version::parse(current).map_err(|_| invalid_update())?;
-    if manifest.schema != 2
+    if manifest.schema != 3
         || manifest.platform != "windows-x86_64"
         || version <= current
         || !version.pre.is_empty()
@@ -33,17 +33,8 @@ pub(crate) fn decode(envelope: &Envelope, key: &str, current: &str) -> Result<Ma
     {
         return Err(invalid_update());
     }
-    if !(2..=MAX_PACKAGE).contains(&manifest.archive_size)
-        || (manifest.archive_sha256.len() != 64
-            || !manifest
-                .archive_sha256
-                .bytes()
-                .all(|b| b.is_ascii_hexdigit()))
-    {
-        return Err(invalid_update());
-    }
     let expected = format!(
-        "https://github.com/panda-student/vault/releases/download/v{0}/vault-{0}.zip",
+        "https://github.com/panda-student/vault/releases/download/v{0}/vault-{0}-setup.exe",
         manifest.version
     );
     if manifest.url != expected {

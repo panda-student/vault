@@ -5,18 +5,13 @@ mod projection;
 use projection as ai;
 use serde_json::{Value, json};
 use vault_common::json::encoded;
-use vault_contracts::ports::system::PauseLease;
 use vault_contracts::{
     credentials::EntryVersion,
     errors::{AppError, Result},
     operations::Operation,
 };
 impl CoreSession {
-    pub(super) fn dispatch(
-        &self,
-        operation: Operation,
-        pause: Option<Box<dyn PauseLease>>,
-    ) -> Result<Value> {
+    pub(super) fn dispatch(&self, operation: Operation) -> Result<Value> {
         let storage = &self.service.storage;
         let is_mcp = self.caller == permissions::Caller::Mcp;
         match operation {
@@ -32,14 +27,8 @@ impl CoreSession {
                 Ok(Value::Null)
             }
             Operation::InstallUpdate => {
-                let launch = self
-                    .service
-                    .updater
-                    .prepare_install(self.directory(), pause.ok_or_else(AppError::invalid)?)?;
-                if let Err(error) = self.service.windows.launch_update(launch) {
-                    self.service.updater.launch_failed();
-                    return Err(error);
-                }
+                let launch = self.service.updater.prepare_install()?;
+                self.service.windows.launch_update(launch)?;
                 self.service.updater.launched();
                 Ok(Value::Null)
             }

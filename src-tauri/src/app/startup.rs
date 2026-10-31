@@ -27,15 +27,6 @@ fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
         )
         .map_err(Into::into);
     }
-    if bootstrap_args
-        .first()
-        .is_some_and(|arg| arg == "--apply-update")
-    {
-        if bootstrap_args.len() != 2 {
-            return Err("Invalid updater arguments".into());
-        }
-        return bootstrap::apply_update(&PathBuf::from(&bootstrap_args[1])).map_err(Into::into);
-    }
     let super::launch::LaunchOptions {
         is_mcp,
         backend_mode,

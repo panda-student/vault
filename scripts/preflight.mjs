@@ -88,10 +88,6 @@ try {
   node("Production isolation", "scripts/verify-production.mjs", {
     VAULT_EXE: resolve("target/release/local-password-manager.exe"),
   });
-  ps("Portable package", "scripts/package-portable.ps1", [
-    "-OutputDirectory",
-    artifacts,
-  ]);
   ps("Production installer", "scripts/package-installer.ps1", [
     "-ArtifactDirectory",
     artifacts,

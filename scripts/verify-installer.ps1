@@ -98,7 +98,7 @@ try {
         }
         Check 'installer-success' ($process.ExitCode -eq 0)
         $installed=Join-Path $directory 'vault.exe'
-        Check 'installed-binary-matches-portable' ((Get-Sha256 $installed) -eq (Get-Sha256 (Join-Path $artifacts "vault-$version/vault.exe")))
+        Check 'installed-binary-matches-staging' ((Get-Sha256 $installed) -eq (Get-Sha256 (Join-Path $artifacts "vault-$version/vault.exe")))
         Check 'existing-data-preserved-on-install' ((Get-Content (Join-Path $directory 'data/keep.txt') -Raw) -eq 'SYNTHETIC_INSTALLER_DATA_ONLY')
         Check 'per-user-uninstall-registration' ((Get-ItemProperty $installKey).DisplayVersion -eq $version)
         $link=(New-Object -ComObject WScript.Shell).CreateShortcut($shortcut)
