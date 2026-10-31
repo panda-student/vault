@@ -1,6 +1,6 @@
 // The same fail-fast build/package/installation pipeline runs locally and in CI.
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, cpSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { cargo } from "./lib/cargo.mjs";
@@ -99,11 +99,6 @@ try {
   const acceptance = ci ? artifacts : join(artifacts, "acceptance");
   if (!ci) {
     mkdirSync(acceptance, { recursive: true });
-    cpSync(
-      join(artifacts, `vault-${version}`),
-      join(acceptance, `vault-${version}`),
-      { recursive: true },
-    );
     ps("Isolated acceptance installer", "scripts/package-installer.ps1", [
       "-ArtifactDirectory",
       acceptance,
