@@ -35,12 +35,12 @@
 
 `.github/workflows/ci-build.yml`：
 
-- main 推送：测试、构建、生成安装包，发布 `preview-<commit>` 预发行附件；不提供稳定更新描述。
-- `v*` 标签：校验版本，构建安装包，用签名密钥生成 `latest.json`，上传草稿 Release；附件齐全后发布为最新正式版。
-- PR 和手动运行：验证并保留 7 天 Actions 附件，不发布正式版。
-- 稳定版必须存在 `docs/releases/<版本>.md`，其内容作为清单的更新说明。
+- 推送到 main（忽略纯文档改动）：运行完整预检，签名清单，并直接发布正式版 `v<package.json 版本>`。版本已发布则保持不变。
+- PR：运行完整预检，不发布。
+- 发布内容：`vault-<version>-setup.exe`、`latest.json`。说明来自 `docs/releases/<version>.md`，缺失则失败。
+- 发布脚本位于 `scripts/ci/`。
 
-正式发布附件为 `vault-<version>-setup.exe`、`latest.json`、`SHA256SUMS`、`installer-size.json`。Secret 缺失或不匹配时发布失败，不允许无签名降级。
+发布新版本的步骤：修改版本号（package.json、src-tauri、backend 各 Cargo.toml、tauri.conf.json），写 `docs/releases/<version>.md`，合并到 main。
 
 ## 数据与失败处理
 
