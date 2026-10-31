@@ -175,6 +175,7 @@ async fn serve(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let base = control::directory(executable)?;
     let registration = control::Registration::new(&base)?;
+    let started = std::time::SystemTime::now();
     let (sender, mut receiver) = mpsc::channel(8);
     tokio::spawn(reader(tokio::io::stdin(), sender.clone(), None));
     let mut stdout = tokio::io::stdout();
@@ -192,6 +193,8 @@ async fn serve(
     loop {
         tokio::select! {
             _ = tick.tick() => {
+                // The user quit vault from the tray: stop instead of relaunching the backend.
+                if control::quit_requested_since(&base, started) { break; }
                 if let Some(token) = control::active(&base) {
                     if pending.is_empty() {
                         if let Some(old) = worker.take() { old.stop().await; }

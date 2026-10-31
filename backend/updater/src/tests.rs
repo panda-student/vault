@@ -98,3 +98,29 @@ fn other_sessions_prevent_replacement_and_recover_after_disconnect() {
     one.release_claim();
     assert!(UpdateRuntime::acquire(&path).is_ok());
 }
+#[test]
+fn older_manifest_schemas_read_as_a_version_not_as_an_error() {
+    let key = SigningKey::from_bytes(&[27; 32]);
+    let public = STANDARD.encode(key.verifying_key().to_bytes());
+    // The previous release line published schema 2 with archive fields.
+    let payload = serde_json::to_vec(&serde_json::json!({
+        "schema": 2, "version": "1.0.0", "platform": "windows-x86_64",
+        "archive_sha256": "a".repeat(64), "archive_size": 1, "notes": "old"
+    }))
+    .unwrap();
+    let envelope = Envelope {
+        payload: STANDARD.encode(&payload),
+        signature: STANDARD.encode(key.sign(&payload).to_bytes()),
+    };
+    assert_eq!(
+        signed_version(&envelope, &public).unwrap(),
+        semver::Version::new(1, 0, 0)
+    );
+    assert!(decode(&envelope, &public, "0.9.0").is_err());
+    // An unsigned or tampered payload is never read as a version.
+    let tampered = Envelope {
+        payload: STANDARD.encode(b"{\"version\":\"9.9.9\"}"),
+        signature: envelope.signature.clone(),
+    };
+    assert!(signed_version(&tampered, &public).is_err());
+}

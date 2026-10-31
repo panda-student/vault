@@ -12,7 +12,15 @@ pub(super) fn create(app: &tauri::App) -> std::result::Result<(), Box<dyn std::e
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => super::window::show_main(app),
-            "quit" => app.exit(0),
+            "quit" => {
+                if let Some(base) = std::env::current_exe()
+                    .ok()
+                    .and_then(|exe| vault_core::bootstrap::runtime::directory(&exe).ok())
+                {
+                    let _ = vault_core::bootstrap::runtime::request_quit(&base);
+                }
+                app.exit(0)
+            }
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {

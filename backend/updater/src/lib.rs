@@ -59,7 +59,7 @@ fn busy() -> AppError {
 use package::verify_binary;
 pub use runtime::UpdateRuntime;
 use vault_contracts::updates::{Envelope, Manifest, UpdateStatus};
-use verification::decode;
+use verification::{decode, signed_version};
 #[derive(Default)]
 struct State {
     status: UpdateStatus,
@@ -165,12 +165,13 @@ impl UpdateService {
             let envelope: Envelope =
                 serde_json::from_slice(&bytes).map_err(|_| invalid_update())?;
             // Authenticate before comparing versions, including the up-to-date case.
-            let manifest = decode(&envelope, PUBLIC_KEY, "0.0.0")?;
-            if semver::Version::parse(&manifest.version).map_err(|_| invalid_update())?
+            // An older release line may still publish another manifest schema.
+            if signed_version(&envelope, PUBLIC_KEY)?
                 <= semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap()
             {
                 return Ok(None);
             }
+            let manifest = decode(&envelope, PUBLIC_KEY, "0.0.0")?;
             Ok(Some((envelope, manifest)))
         })();
         match result {
