@@ -9,6 +9,7 @@ import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
+const version=JSON.parse(await readFile('package.json','utf8')).version,setupName=`vault-${version}-setup.exe`;
 const run=promisify(execFile),sleep=ms=>new Promise(r=>setTimeout(r,ms));
 // CIM reports long paths even when Windows TEMP uses an 8.3 alias.
 const root=await realpath(await mkdtemp(join(tmpdir(),'vault-installer-handoff-')));
@@ -40,7 +41,7 @@ try{
   processMonitor=spawn('powershell.exe',['-NoProfile','-Command',`
 $seen=@{}
 while($true){
- $items=Get-CimInstance Win32_Process -Filter "Name='vault-helper.exe' OR Name='vault.exe' OR Name='vault-0.5.8-setup.exe'"
+ $items=Get-CimInstance Win32_Process -Filter "Name='vault-helper.exe' OR Name='vault.exe' OR Name='${setupName}'"
  foreach($item in $items){
   if(!$seen.ContainsKey($item.ProcessId) -and $item.CommandLine -and $item.CommandLine.Contains($env:VAULT_TRACE_ROOT)){
    $seen[$item.ProcessId]=$true
