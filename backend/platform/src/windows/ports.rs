@@ -59,9 +59,6 @@ impl SystemPlatform for WindowsService {
     fn begin_pause(&self, e: &Path) -> Result<Box<dyn PauseLease>> {
         Ok(Box::new(crate::runtime::Pause::begin(e)?))
     }
-    fn adopt_pause(&self, e: &Path, t: &str) -> Result<Box<dyn PauseLease>> {
-        Ok(Box::new(crate::runtime::Pause::adopt(e, t)?))
-    }
     fn wait_for_process(&self, id: u32) -> Result<()> {
         super::wait_for_process(id)
     }

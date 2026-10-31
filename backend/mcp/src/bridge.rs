@@ -175,6 +175,10 @@ async fn serve(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let base = control::directory(executable)?;
     let registration = control::Registration::new(&base)?;
+    // Start of the current backend. A tray quit marker newer than this stops auto-restart.
+    let mut worker_started = std::time::SystemTime::now();
+    // Requests held while a backend is relaunched on demand; no worker has seen them.
+    let mut deferred: Vec<Vec<u8>> = Vec::new();
     let (sender, mut receiver) = mpsc::channel(8);
     tokio::spawn(reader(tokio::io::stdin(), sender.clone(), None));
     let mut stdout = tokio::io::stdout();
@@ -197,8 +201,9 @@ async fn serve(
                         if let Some(old) = worker.take() { old.stop().await; }
                         registration.acknowledge(&token)?;
                     }
-                } else if worker.is_none() {
+                } else if worker.is_none() && !control::quit_requested_since(&base, worker_started) {
                     generation += 1;
+                    worker_started = std::time::SystemTime::now();
                     // The canonical launch path now points at the installed or rolled-back binary.
                     // A short launch failure leaves the client connection alive and retryable.
                     if let Ok(next) = Worker::start(executable, directory, generation, sender.clone(), initialize.as_ref()).await {
@@ -214,6 +219,27 @@ async fn serve(
                     let method = value.get("method").and_then(Value::as_str);
                     // During a pause, reject new requests explicitly. In particular, never
                     // buffer and retry mutating operations after a worker restart.
+                    // After a tray quit the bridge stays connected to the client and relaunches
+                    // the backend on the next request, like any stdio server that is restarted on demand.
+                    let idle = worker.is_none() && control::active(&base).is_none() && control::quit_requested_since(&base, worker_started);
+                    if idle {
+                        let reinitialize = method == Some("initialize");
+                        generation += 1;
+                        worker_started = std::time::SystemTime::now();
+                        match Worker::start(executable, directory, generation, sender.clone(), if reinitialize { None } else { initialize.as_ref() }).await {
+                            Ok(next) => {
+                                worker = Some(next);
+                                if reinitialize {
+                                    initialize = Some(value.clone());
+                                    if let Some(id) = id { pending.insert(id.to_string(), id.clone()); }
+                                    if worker.as_mut().unwrap().send(&bytes).await.is_err() { worker = None; }
+                                } else { deferred.push(bytes); }
+                            }
+                            Err(_) => { if let Some(id) = id { output(&mut stdout, &paused(id, false)).await?; } }
+                        }
+                        continue;
+                    }
+                    if !deferred.is_empty() { deferred.push(bytes); continue; }
                     let unavailable = control::active(&base).is_some() || worker.as_ref().is_none_or(|w| w.bootstrap.is_some());
                     if unavailable {
                         if let Some(id) = id { output(&mut stdout, &paused(id, false)).await?; }
@@ -235,10 +261,17 @@ async fn serve(
                     let bootstrap = worker.as_ref().and_then(|w| w.bootstrap.as_deref());
                     if bootstrap.is_some() && value.get("id").and_then(Value::as_str) == bootstrap {
                         if value.get("error").is_some() {
+                            for held in deferred.drain(..) {
+                                if let Some(id) = serde_json::from_slice::<Value>(&held).ok().and_then(|v| v.get("id").cloned()) { output(&mut stdout, &paused(&id, false)).await?; }
+                            }
                             if let Some(old) = worker.take() { old.stop().await; }
                         } else if let Some(w) = worker.as_mut() {
                             w.bootstrap = None;
                             if initialized { w.send(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}").await?; }
+                            for held in deferred.drain(..) {
+                                if let Some(id) = serde_json::from_slice::<Value>(&held).ok().and_then(|v| v.get("id").cloned()) { pending.insert(id.to_string(), id); }
+                                w.send(&held).await?;
+                            }
                         }
                         continue;
                     }
@@ -247,6 +280,9 @@ async fn serve(
                     stdout.write_all(&bytes).await?; stdout.flush().await?;
                 }
                 Some(Event::WorkerEnd(g)) if g == generation => {
+                    for held in deferred.drain(..) {
+                        if let Some(id) = serde_json::from_slice::<Value>(&held).ok().and_then(|v| v.get("id").cloned()) { output(&mut stdout, &paused(&id, false)).await?; }
+                    }
                     for id in pending.values() { output(&mut stdout, &paused(id, true)).await?; }
                     pending.clear();
                     if let Some(old) = worker.take() { old.stop().await; }

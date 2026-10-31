@@ -31,7 +31,6 @@ pub trait SystemPlatform: Send + Sync {
     fn confirm_purge(&self, owner: isize, count: usize) -> Result<bool>;
     fn launch_update(&self, launch: UpdateLaunch) -> Result<()>;
     fn begin_pause(&self, executable: &Path) -> Result<Box<dyn PauseLease>>;
-    fn adopt_pause(&self, executable: &Path, token: &str) -> Result<Box<dyn PauseLease>>;
     fn wait_for_process(&self, id: u32) -> Result<()>;
     fn start_updated(
         &self,

@@ -26,6 +26,3 @@ pub fn replace_package(
         &vault_platform::windows::WindowsService::default(),
     )
 }
-pub fn apply_update(plan: &std::path::Path) -> crate::api::Result<()> {
-    vault_updater::apply_update(plan, &vault_platform::windows::WindowsService::default())
-}

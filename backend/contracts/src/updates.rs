@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 pub struct UpdateLaunch {
-    pub helper: PathBuf,
-    pub plan: PathBuf,
+    pub installer: PathBuf,
+    pub directory: PathBuf,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -20,8 +20,6 @@ pub struct Manifest {
     pub sha256: String,
     pub size: u64,
     pub notes: String,
-    pub archive_sha256: String,
-    pub archive_size: u64,
 }
 
 #[derive(Clone, Default, Serialize)]
@@ -33,14 +31,4 @@ pub struct UpdateStatus {
     pub received: u64,
     pub total: u64,
     pub error: Option<String>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct InstallPlan {
-    pub executable: PathBuf,
-    pub directory: PathBuf,
-    pub parent: u32,
-    pub envelope: Envelope,
-    pub token: String,
-    pub pause_token: String,
 }

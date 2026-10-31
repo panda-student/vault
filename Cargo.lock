@@ -84,15 +84,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
-name = "arbitrary"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bc62ac97cc33321f50863d514c3bc38a453947a8f9e781137e47c7401020aed"
-dependencies = [
- "derive_arbitrary",
-]
-
-[[package]]
 name = "arboard"
 version = "3.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -709,17 +700,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e9de72ce2ad1f90dc62fa25f0f430ef85eb4b0d8fa0be4f30373bc40a21d28e"
 dependencies = [
  "serde_core",
-]
-
-[[package]]
-name = "derive_arbitrary"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b034bd7d5f032402a2479444dcc6f74e36a03f31854d41680fb240ef682a1ac"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.9",
 ]
 
 [[package]]
@@ -2106,7 +2086,7 @@ checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 
 [[package]]
 name = "local-password-manager"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "fs2",
  "serde",
@@ -4621,7 +4601,7 @@ dependencies = [
 
 [[package]]
 name = "vault-common"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -4632,7 +4612,7 @@ dependencies = [
 
 [[package]]
 name = "vault-contracts"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -4642,7 +4622,7 @@ dependencies = [
 
 [[package]]
 name = "vault-core"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "rusqlite",
  "serde",
@@ -4662,7 +4642,7 @@ dependencies = [
 
 [[package]]
 name = "vault-credentials"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -4673,7 +4653,7 @@ dependencies = [
 
 [[package]]
 name = "vault-filling"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -4684,7 +4664,7 @@ dependencies = [
 
 [[package]]
 name = "vault-mcp"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "fs2",
  "rmcp",
@@ -4699,7 +4679,7 @@ dependencies = [
 
 [[package]]
 name = "vault-permissions"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "base64 0.22.1",
  "percent-encoding",
@@ -4711,7 +4691,7 @@ dependencies = [
 
 [[package]]
 name = "vault-platform"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "fs2",
  "reqwest 0.12.28",
@@ -4730,7 +4710,7 @@ dependencies = [
 
 [[package]]
 name = "vault-storage"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "aes-gcm",
  "getrandom 0.4.3",
@@ -4746,7 +4726,7 @@ dependencies = [
 
 [[package]]
 name = "vault-transfer"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -4759,11 +4739,10 @@ dependencies = [
 
 [[package]]
 name = "vault-updater"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
- "flate2",
  "fs2",
  "reqwest 0.12.28",
  "semver",
@@ -4774,7 +4753,6 @@ dependencies = [
  "uuid",
  "vault-common",
  "vault-contracts",
- "zip",
 ]
 
 [[package]]
@@ -5637,19 +5615,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.9",
-]
-
-[[package]]
-name = "zip"
-version = "4.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "caa8cd6af31c3b31c6631b8f483848b91589021b28fffe50adada48d4f4d2ed1"
-dependencies = [
- "arbitrary",
- "crc32fast",
- "flate2",
- "indexmap 2.14.2",
- "memchr",
 ]
 
 [[package]]

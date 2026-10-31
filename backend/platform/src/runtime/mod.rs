@@ -26,6 +26,17 @@ pub fn active(base: &Path) -> Option<String> {
     (request.expires > seconds() && uuid::Uuid::parse_str(&request.token).is_ok())
         .then_some(request.token)
 }
+/// An explicit tray quit leaves a marker so connection bridges stop relaunching the
+/// backend. A bridge only honors a marker written after it started.
+pub fn request_quit(base: &Path) -> Result<()> {
+    fs::create_dir_all(base).map_err(|_| AppError::storage())?;
+    fs::write(base.join("quit"), seconds().to_string()).map_err(|_| AppError::storage())
+}
+pub fn quit_requested_since(base: &Path, since: SystemTime) -> bool {
+    fs::metadata(base.join("quit"))
+        .and_then(|meta| meta.modified())
+        .is_ok_and(|modified| modified > since)
+}
 pub struct Registration {
     path: PathBuf,
     _lease: File,
@@ -159,6 +170,21 @@ impl Pause {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn tray_quit_marker_only_stops_bridges_started_before_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("vault.exe");
+        fs::write(&exe, b"fixture").unwrap();
+        let base = directory(&exe).unwrap();
+        let before = SystemTime::now();
+        assert!(!quit_requested_since(&base, before));
+        std::thread::sleep(Duration::from_millis(30));
+        request_quit(&base).unwrap();
+        assert!(quit_requested_since(&base, before));
+        std::thread::sleep(Duration::from_millis(30));
+        // A bridge launched after the quit ignores the older marker.
+        assert!(!quit_requested_since(&base, SystemTime::now()));
+    }
     #[test]
     fn update_waits_for_ack_and_drop_resumes_only_its_own_pause() {
         let dir = tempfile::tempdir().unwrap();

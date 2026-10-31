@@ -1,4 +1,4 @@
-//! Signed portable updates. Network metadata never supplies local paths or commands.
+//! Signed installer updates. Network metadata never supplies local paths or commands.
 mod health;
 pub mod installation;
 mod package;
@@ -7,7 +7,6 @@ mod verification;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::{Signature, VerifyingKey};
 use fs2::FileExt;
-use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Write},
@@ -19,10 +18,7 @@ use std::{
     time::Duration,
 };
 use vault_contracts::errors::{AppError, Result};
-use vault_contracts::{
-    ports::system::{PauseLease, SystemPlatform},
-    updates::UpdateLaunch,
-};
+use vault_contracts::updates::UpdateLaunch;
 
 const ENDPOINT: &str =
     "https://github.com/panda-student/vault/releases/latest/download/latest.json";
@@ -60,11 +56,10 @@ fn busy() -> AppError {
     failure("UPDATE_BUSY", "更新操作正在进行，请稍后重试。")
 }
 
-use package::{extract_update_payload, verify_binary, verify_file};
+use package::verify_binary;
 pub use runtime::UpdateRuntime;
-use runtime::runtime_paths;
-use vault_contracts::updates::{Envelope, InstallPlan, Manifest, UpdateStatus};
-use verification::decode;
+use vault_contracts::updates::{Envelope, Manifest, UpdateStatus};
+use verification::{decode, signed_version};
 #[derive(Default)]
 struct State {
     status: UpdateStatus,
@@ -73,16 +68,14 @@ struct State {
     ready: Option<PathBuf>,
 }
 pub struct UpdateService {
-    platform: Arc<dyn SystemPlatform>,
     state: Mutex<State>,
     runtime: Mutex<Option<Arc<UpdateRuntime>>>,
     cancelled: AtomicBool,
     installing: AtomicBool,
 }
 impl UpdateService {
-    pub fn new(platform: Arc<dyn SystemPlatform>) -> Self {
+    pub fn new() -> Self {
         Self {
-            platform,
             state: Mutex::new(State {
                 status: UpdateStatus {
                     phase: "idle".into(),
@@ -172,12 +165,13 @@ impl UpdateService {
             let envelope: Envelope =
                 serde_json::from_slice(&bytes).map_err(|_| invalid_update())?;
             // Authenticate before comparing versions, including the up-to-date case.
-            let manifest = decode(&envelope, PUBLIC_KEY, "0.0.0")?;
-            if semver::Version::parse(&manifest.version).map_err(|_| invalid_update())?
+            // An older release line may still publish another manifest schema.
+            if signed_version(&envelope, PUBLIC_KEY)?
                 <= semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap()
             {
                 return Ok(None);
             }
+            let manifest = decode(&envelope, PUBLIC_KEY, "0.0.0")?;
             Ok(Some((envelope, manifest)))
         })();
         match result {
@@ -192,7 +186,7 @@ impl UpdateService {
                             phase: if same_ready { "ready" } else { "available" }.into(),
                             version: Some(manifest.version.clone()),
                             notes: manifest.notes.clone(),
-                            total: manifest.archive_size,
+                            total: manifest.size,
                             ..Default::default()
                         };
                         state.manifest = Some(manifest);
@@ -230,10 +224,9 @@ impl UpdateService {
             let manifest = decode(&envelope, PUBLIC_KEY, env!("CARGO_PKG_VERSION"))?;
             fs::create_dir_all(&runtime.cache).map_err(|_| AppError::storage())?;
             let partial = runtime.cache.join(format!("{}.part", uuid::Uuid::new_v4()));
-            let unpacked = runtime.cache.join(format!("{}.exe", uuid::Uuid::new_v4()));
             let result = (|| {
-                let download_size = manifest.archive_size;
-                let asset = format!("/vault-{}.zip", manifest.version);
+                let download_size = manifest.size;
+                let asset = format!("/vault-{}-setup.exe", manifest.version);
                 let url = test_source()
                     .map(|url| url.replace("/latest.json", &asset))
                     .unwrap_or_else(|| manifest.url.clone());
@@ -277,26 +270,22 @@ impl UpdateService {
                     AppError::storage().with("update.flush", &error.to_string())
                 })?;
                 drop(file);
-                verify_file(&partial, download_size, &manifest.archive_sha256, b"PK")?;
-                extract_update_payload(
-                    &partial,
-                    &unpacked,
-                    &format!("vault-{}/vault.exe", manifest.version),
-                    manifest.size,
-                )?;
-                verify_binary(&unpacked, &manifest)?;
-                fs::remove_file(&partial).map_err(|_| AppError::storage())?;
-                let ready = unpacked.clone();
+                verify_binary(&partial, &manifest)?;
+                let ready = runtime
+                    .cache
+                    .join(format!("vault-{}-setup.exe", manifest.version));
+                fs::rename(&partial, &ready).map_err(|_| AppError::storage())?;
                 let mut state = self.state.lock().map_err(|_| busy())?;
-                if let Some(old) = state.ready.replace(ready) {
-                    let _ = fs::remove_file(old);
+                if let Some(old) = state.ready.replace(ready.clone()) {
+                    if old != ready {
+                        let _ = fs::remove_file(old);
+                    }
                 }
                 state.status.phase = "ready".into();
                 Ok(state.status.clone())
             })();
             if result.is_err() {
                 let _ = fs::remove_file(partial);
-                let _ = fs::remove_file(unpacked);
             }
             result
         })();
@@ -305,19 +294,11 @@ impl UpdateService {
             Err(error) => self.failed(error),
         }
     }
-    pub fn pause_connections(&self) -> Result<Box<dyn PauseLease>> {
-        if self.state.lock().map_err(|_| busy())?.status.phase != "ready" {
-            return Err(failure("UPDATE_NOT_READY", "请先完成更新包下载。"));
-        }
-        self.platform.begin_pause(&self.runtime()?.executable)
-    }
-    pub fn prepare_install(
-        &self,
-        directory: &Path,
-        pause: Box<dyn PauseLease>,
-    ) -> Result<UpdateLaunch> {
+    /// Validate the verified installer and hand it to the desktop, which closes
+    /// itself. The installer then takes the shared-session lock and drains MCP.
+    pub fn prepare_install(&self) -> Result<UpdateLaunch> {
         let runtime = self.runtime()?;
-        let (envelope, ready) = {
+        let (envelope, installer) = {
             let state = self.state.lock().map_err(|_| busy())?;
             if state.status.phase != "ready" {
                 return Err(failure("UPDATE_NOT_READY", "请先完成更新包下载。"));
@@ -328,48 +309,19 @@ impl UpdateService {
             )
         };
         let manifest = decode(&envelope, PUBLIC_KEY, env!("CARGO_PKG_VERSION"))?;
-        verify_binary(&ready, &manifest)?;
+        verify_binary(&installer, &manifest)?;
+        // Refuse early when other windows or old MCP sessions hold the program.
         runtime.claim()?;
-        let result = (|| {
-            let stage = runtime
-                .executable
-                .parent()
-                .ok_or_else(invalid_update)?
-                .join(format!(".vault-update-{}", uuid::Uuid::new_v4()));
-            fs::create_dir(&stage).map_err(|_| {
-                failure(
-                    "UPDATE_DIRECTORY",
-                    "程序目录不可写，请将便携版移到可写目录后重试。",
-                )
-            })?;
-            let helper = stage.join("helper.exe");
-            fs::copy(&runtime.executable, &helper).map_err(|_| AppError::storage())?;
-            fs::copy(ready, stage.join("payload.exe")).map_err(|_| AppError::storage())?;
-            let plan = InstallPlan {
-                executable: runtime.executable.clone(),
-                directory: directory.to_owned(),
-                parent: std::process::id(),
-                envelope,
-                token: uuid::Uuid::new_v4().to_string(),
-                pause_token: pause.token().to_owned(),
-            };
-            fs::write(
-                stage.join("plan.json"),
-                serde_json::to_vec(&plan).map_err(|_| invalid_update())?,
-            )
-            .map_err(|_| AppError::storage())?;
-            Ok(UpdateLaunch {
-                helper,
-                plan: stage.join("plan.json"),
-            })
-        })();
-        if result.is_err() {
-            runtime.release_claim();
-        } else {
-            *runtime.pause.lock().map_err(|_| busy())? = Some(pause.token().to_owned());
-            pause.handoff();
-        }
-        result
+        runtime.release_claim();
+        let directory = runtime
+            .executable
+            .parent()
+            .ok_or_else(invalid_update)?
+            .to_owned();
+        Ok(UpdateLaunch {
+            installer,
+            directory,
+        })
     }
     pub fn launched(&self) {
         self.installing.store(true, Ordering::SeqCst);
@@ -377,123 +329,6 @@ impl UpdateService {
             state.status.phase = "installing".into();
         }
     }
-    pub fn launch_failed(&self) {
-        if let Ok(runtime) = self.runtime() {
-            runtime.release_claim();
-            if let Ok(mut pending) = runtime.pause.lock() {
-                if let Some(token) = pending.take() {
-                    let _ = self.platform.adopt_pause(&runtime.executable, &token);
-                }
-            }
-        }
-    }
-}
-
-use vault_common::files::move_file;
-/// Runs from a copy of the old executable, before vault/WebView initialization.
-pub fn apply_update(plan_path: &Path, platform: &dyn SystemPlatform) -> Result<()> {
-    let current = std::env::current_exe().map_err(|_| invalid_update())?;
-    let stage = current.parent().ok_or_else(invalid_update)?;
-    if current.file_name().and_then(|n| n.to_str()) != Some("helper.exe")
-        || plan_path != stage.join("plan.json")
-    {
-        return Err(invalid_update());
-    }
-    let plan: InstallPlan =
-        serde_json::from_slice(&fs::read(plan_path).map_err(|_| invalid_update())?)
-            .map_err(|_| invalid_update())?;
-    if !plan.executable.is_absolute()
-        || !plan.directory.is_absolute()
-        || plan.executable.parent() != stage.parent()
-        || !stage
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.starts_with(".vault-update-"))
-        || uuid::Uuid::parse_str(&plan.token).is_err()
-    {
-        return Err(invalid_update());
-    }
-    let _resume = platform.adopt_pause(&plan.executable, &plan.pause_token)?;
-    let manifest = decode(&plan.envelope, PUBLIC_KEY, env!("CARGO_PKG_VERSION"))?;
-    let payload = stage.join("payload.exe");
-    verify_binary(&payload, &manifest)?;
-    platform.wait_for_process(plan.parent)?;
-    let (lock_path, _) = runtime_paths(&plan.executable)?;
-    let lock = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(lock_path)
-        .map_err(|_| AppError::storage())?;
-    FileExt::try_lock_exclusive(&lock)
-        .map_err(|_| failure("UPDATE_CLIENTS_ACTIVE", "仍有进程使用程序，更新未执行。"))?;
-    let backup = stage.join("previous.exe");
-    // The old image can remain locked briefly after process exit.
-    let mut moved = false;
-    for _ in 0..50 {
-        if move_file(&plan.executable, &backup).is_ok() {
-            moved = true;
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    if !moved {
-        return Err(failure("UPDATE_REPLACE", "无法替换程序，旧版本已保留。"));
-    }
-    if move_file(&payload, &plan.executable).is_err() {
-        let _ = move_file(&backup, &plan.executable);
-        return Err(invalid_update());
-    }
-    FileExt::unlock(&lock).map_err(|_| AppError::storage())?;
-    let health = stage.join("healthy");
-    let mut child = match platform.start_updated(
-        &plan.executable,
-        &plan.directory,
-        Some((&health, &plan.token)),
-    ) {
-        Ok(child) => Some(child),
-        Err(_) => None,
-    };
-    let mut healthy = false;
-    if let Some(process) = child.as_mut() {
-        for _ in 0..600 {
-            if fs::read_to_string(&health).is_ok_and(|s| s == plan.token) {
-                healthy = true;
-                break;
-            }
-            if process.try_wait().ok().flatten().is_some() {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(100));
-        }
-    }
-    if healthy {
-        // Keep previous.exe as an executable-only recovery copy. Never touch data.
-        let _ = fs::remove_file(plan_path);
-        let _ = fs::remove_file(health);
-        return Ok(());
-    }
-    if let Some(mut process) = child {
-        let _ = process.kill();
-        let _ = process.wait();
-    }
-    FileExt::try_lock_exclusive(&lock).map_err(|_| {
-        failure(
-            "UPDATE_ROLLBACK",
-            "新版未确认启动，仍有进程占用；请从更新暂存目录恢复 previous.exe。",
-        )
-    })?;
-    if let Err(error) = move_file(&plan.executable, &stage.join("failed.exe")) {
-        if error.kind() != std::io::ErrorKind::NotFound {
-            return Err(invalid_update());
-        }
-    }
-    move_file(&backup, &plan.executable).map_err(|_| invalid_update())?;
-    FileExt::unlock(&lock).map_err(|_| AppError::storage())?;
-    health::restart_restored(platform, &plan.executable, &plan.directory)?;
-    Err(failure(
-        "UPDATE_ROLLED_BACK",
-        "新版未能正常启动，已恢复旧程序。数据目录保持原样。",
-    ))
 }
 
 #[cfg(test)]

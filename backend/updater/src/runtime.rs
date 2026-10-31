@@ -5,7 +5,6 @@ pub struct UpdateRuntime {
     pub(crate) executable: PathBuf,
     pub(crate) lease: Mutex<File>,
     pub(crate) cache: PathBuf,
-    pub(crate) pause: Mutex<Option<String>>,
 }
 impl UpdateRuntime {
     pub fn acquire(executable: &Path) -> Result<Arc<Self>> {
@@ -29,7 +28,6 @@ impl UpdateRuntime {
             executable: executable.to_owned(),
             lease: Mutex::new(file),
             cache,
-            pause: Mutex::new(None),
         }))
     }
     pub fn claim(&self) -> Result<()> {

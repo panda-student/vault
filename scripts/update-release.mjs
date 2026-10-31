@@ -28,20 +28,19 @@ if (command === 'validate') {
   const raw = keys.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32);
   await writeFile(publicPath, raw.toString('base64') + '\n', { flag: 'wx' });
 } else if (command === 'manifest') {
-  const [binary, output, tag, notesFile] = args;
+  const [installer, output, tag, notesFile] = args;
   const version = JSON.parse(await readFile('package.json', 'utf8')).version;
   assert.match(version, /^\d+\.\d+\.\d+$/, 'Only stable versions enter the update feed');
   assert.equal(tag, `v${version}`, 'Tag and package version must match');
   const cargo = await readFile('src-tauri/Cargo.toml', 'utf8');
   assert.equal(cargo.match(/^version = "([^"]+)"/m)?.[1], version);
   assert.equal(JSON.parse(await readFile('src-tauri/tauri.conf.json', 'utf8')).version, version);
-  const bytes = await readFile(binary);
+  const bytes = await readFile(installer);
   const privateKey = createPrivateKey({ key: Buffer.from(process.env.VAULT_UPDATE_SIGNING_KEY || '', 'base64'), format: 'der', type: 'pkcs8' });
   const raw = (await readFile('backend/updater/update-public-key.txt', 'utf8')).trim();
   const expected = createPublicKey(privateKey).export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64');
   assert.equal(expected, raw, 'Signing key does not match the embedded public key');
-  const archive = await readFile(resolve(dirname(binary), `../vault-${version}.zip`));
-  const payload = Buffer.from(JSON.stringify({ schema: 2, version, platform: 'windows-x86_64', url: `https://github.com/panda-student/vault/releases/download/${tag}/vault-${version}.zip`, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length, archive_sha256: createHash('sha256').update(archive).digest('hex'), archive_size: archive.length, notes: notesFile ? (await readFile(notesFile, 'utf8')).slice(0, 16000) : `vault ${version}` }));
+  const payload = Buffer.from(JSON.stringify({ schema: 3, version, platform: 'windows-x86_64', url: `https://github.com/panda-student/vault/releases/download/${tag}/vault-${version}-setup.exe`, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length, notes: notesFile ? (await readFile(notesFile, 'utf8')).slice(0, 16000) : `vault ${version}` }));
   const signature = sign(null, payload, privateKey);
   assert.ok(verify(null, payload, createPublicKey(privateKey), signature));
   await writeFile(output, JSON.stringify({ payload: payload.toString('base64'), signature: signature.toString('base64') }, null, 2) + '\n');

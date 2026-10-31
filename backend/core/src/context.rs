@@ -46,7 +46,7 @@ pub(crate) fn assemble(
     Ok(Arc::new(CoreSession {
         execution_gate: Arc::new(RwLock::new(())),
         service: Arc::new(CoreService {
-            updater: updater::UpdateService::new(platform.clone()),
+            updater: updater::UpdateService::new(),
             storage: storage::CredentialService::new(repository),
             filling: Default::default(),
             windows: platform,
@@ -177,19 +177,16 @@ impl CoreSession {
     }
     pub(crate) fn execute(&self, operation: Operation) -> Result<Value> {
         let installing = matches!(&operation, Operation::InstallUpdate);
-        // Drain MCP before taking the shared exclusive gate: a request already
-        // queued on that gate must be able to finish, never deadlock the updater.
-        let pause = if installing {
+        // Installing takes the exclusive gate so no operation runs while the
+        // installer is handed off; the installer drains MCP on its own side.
+        if installing {
             self.service.permissions.authorize_operation(
                 self.caller,
                 &operation,
                 &self.service.storage.settings()?,
                 &self.service.storage,
             )?;
-            Some(self.service.updater.pause_connections()?)
-        } else {
-            None
-        };
+        }
         let _exclusive = if installing {
             Some(
                 self.execution_gate
@@ -241,7 +238,7 @@ impl CoreSession {
                 _ => {}
             }
         }
-        let result = self.dispatch(operation, pause);
+        let result = self.dispatch(operation);
 
         if is_mcp {
             let mut guard = self.guard.write().map_err(|_| AppError::storage())?;
