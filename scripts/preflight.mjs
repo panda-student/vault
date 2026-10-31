@@ -80,7 +80,7 @@ try {
     "scripts/build-test.mjs",
     "--release",
   ]);
-  for (const name of ["next", "permissions", "mcp-handoff"])
+  for (const name of ["next", "permissions", "mcp-handoff", "quit-recovery"])
     node(name, `scripts/verify-${name}.mjs`, {
       VAULT_EXE: resolve("artifacts/test-build/vault.exe"),
     });
