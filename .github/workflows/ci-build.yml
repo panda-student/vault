@@ -63,44 +63,16 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           VAULT_UPDATE_SIGNING_KEY: ${{ secrets.VAULT_UPDATE_SIGNING_KEY }}
+          REF_NAME: ${{ github.ref_name }}
         shell: pwsh
-        run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          node scripts/update-release.mjs manifest "artifacts/vault-$version-setup.exe" artifacts/latest.json "${{ github.ref_name }}" "docs/releases/$version.md"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        run: scripts/ci/sign-manifest.ps1 -RefName $env:REF_NAME
       - name: Publish GitHub Release attachments
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         env:
           GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
         shell: pwsh
-        run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $stable = '${{ github.ref }}'.StartsWith('refs/tags/v')
-          $tag = if ($stable) { '${{ github.ref_name }}' } else { 'preview-' + '${{ github.sha }}'.Substring(0, 12) }
-          $files = @("artifacts/vault-$version-setup.exe", 'artifacts/installer-size.json')
-          if ($stable) { $files += 'artifacts/latest.json' }
-          $lines = $files | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + (Split-Path -Leaf $_) }
-          $lines | Set-Content -Encoding utf8NoBOM artifacts/SHA256SUMS
-          $files += 'artifacts/SHA256SUMS'
-          $existingText = gh release view $tag --repo '${{ github.repository }}' --json isDraft,targetCommitish 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            $existing = $existingText | ConvertFrom-Json
-            if ($existing.targetCommitish -ne '${{ github.sha }}') { throw 'Release points to a different commit; refusing to overwrite.' }
-            if (!$existing.isDraft) { Write-Output 'This commit is already published; keeping immutable release assets.'; exit 0 }
-          } else {
-            @"
-          ## 下载选择
-          - vault-$version-setup.exe：安装向导，默认 D:\vault，可修改目录；提供开始菜单和卸载入口，卸载保留密码库。
-
-          ## 升级提示
-          应用内更新下载并运行本签名安装包，安装器自动等待 MCP 操作完成、关闭旧桌面并在安装后恢复原数据目录与连接，无需退出 AI 客户端。旧版本首次升级到安装包更新方式时需要手动运行一次本安装包。请先保存界面修改并备份 data。
-          Windows 10/11 x64，需要系统已有 WebView2 Runtime。密码库仍绑定原 Windows 用户和电脑。
-          "@ | Set-Content -Encoding utf8NoBOM artifacts/release-notes.md
-            gh release create $tag --repo '${{ github.repository }}' --target '${{ github.sha }}' --draft --title "vault $version$(if (!$stable) { ' · Preview' })" --notes-file artifacts/release-notes.md
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-          gh release upload $tag @files --clobber --repo '${{ github.repository }}'
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if ($stable) { gh release edit $tag --draft=false --latest --repo '${{ github.repository }}' }
-          else { gh release edit $tag --draft=false --prerelease --latest=false --repo '${{ github.repository }}' }
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        run: scripts/ci/publish-release.ps1 -Ref $env:REF -RefName $env:REF_NAME -Sha $env:SHA -Repository $env:REPOSITORY
