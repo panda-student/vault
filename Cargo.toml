@@ -3,7 +3,7 @@ members = ["backend/core", "backend/contracts", "backend/credentials", "backend/
 resolver = "3"
 
 [workspace.package]
-version = "0.6.5"
+version = "0.6.6"
 
 [profile.release]
 panic = "abort"
