@@ -78,7 +78,9 @@ mod tests {
     use super::*;
     #[test]
     fn isolated_registry_roundtrip_and_quoted_paths() {
-        let path = format!("Software\\Vault\\Acceptance\\{}", uuid::Uuid::new_v4());
+        // Keep test keys outside `Software\Vault`: the installer acceptance guard
+        // treats that key as an existing installation.
+        let path = format!("Software\\VaultTests\\Acceptance\\{}", uuid::Uuid::new_v4());
         let value = command(
             Path::new("D:\\中文 路径\\App.exe"),
             Path::new("D:\\中文 数据"),
@@ -95,8 +97,9 @@ mod tests {
         assert!(!enabled_at(&path, LEGACY_NAME, &value).unwrap());
         set_at(&path, NAME, false, &value).unwrap();
         assert!(!enabled_at(&path, NAME, &value).unwrap());
-        RegKey::predef(HKEY_CURRENT_USER)
-            .delete_subkey(&path)
-            .unwrap();
+        let root = RegKey::predef(HKEY_CURRENT_USER);
+        root.delete_subkey(&path).unwrap();
+        root.delete_subkey("Software\\VaultTests\\Acceptance").ok();
+        root.delete_subkey("Software\\VaultTests").ok();
     }
 }
