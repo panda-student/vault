@@ -145,6 +145,11 @@ async function install() {
   color: #536079;
   max-height: 180px;
   overflow-y: auto;
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #f4f6fb;
+  scrollbar-gutter: stable;
 }
 .update-actions {
   display: flex;
