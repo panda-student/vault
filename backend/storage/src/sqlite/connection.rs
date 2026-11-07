@@ -49,7 +49,7 @@ impl Vault {
         let version: i64 = transaction
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .map_err(crate::sql_error)?;
-        let key = if version == 0 && !existed {
+        let (key, row_aad_prefix) = if version == 0 && !existed {
             let tables: i64 = transaction
                 .query_row(
                     "SELECT count(*) FROM sqlite_master WHERE type='table'",
@@ -74,11 +74,20 @@ impl Vault {
                     [wrapped],
                 )
                 .map_err(crate::sql_error)?;
-            let check = crypto::encrypt(&key, KEY_AAD, KEY_AAD)?;
+            // Keep the legacy marker readable so 0.6.3 can still open a database
+            // created during an update that later rolls back.
+            let check = crypto::encrypt(&key, LEGACY_KEY_AAD, LEGACY_KEY_AAD)?;
             transaction
                 .execute(
                     "INSERT INTO metadata (name,value) VALUES ('key_check',?1)",
                     [check],
+                )
+                .map_err(crate::sql_error)?;
+            let check_v2 = crypto::encrypt(&key, KEY_AAD, KEY_AAD)?;
+            transaction
+                .execute(
+                    "INSERT INTO metadata (name,value) VALUES ('key_check_v2',?1)",
+                    [check_v2],
                 )
                 .map_err(crate::sql_error)?;
             let settings =
@@ -89,7 +98,7 @@ impl Vault {
                     [settings],
                 )
                 .map_err(crate::sql_error)?;
-            key
+            (key, "vault-v1")
         } else {
             if version != 4 {
                 return Err(AppError::new(
@@ -108,6 +117,18 @@ impl Vault {
             if key.len() != 32 {
                 return Err(AppError::corrupt());
             }
+            let new_format: Option<Vec<u8>> = transaction
+                .query_row(
+                    "SELECT value FROM metadata WHERE name='key_check_v2'",
+                    [],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(crate::sql_error)?;
+            let new_format = new_format.is_some_and(|packed| {
+                crypto::decrypt(&key, KEY_AAD, &packed)
+                    .is_ok_and(|value| value.as_slice() == KEY_AAD)
+            });
             let packed: Vec<u8> = transaction
                 .query_row(
                     "SELECT value FROM metadata WHERE name='key_check'",
@@ -115,15 +136,28 @@ impl Vault {
                     |r| r.get(0),
                 )
                 .map_err(crate::sql_error)?;
-            if crypto::decrypt(&key, KEY_AAD, &packed)?.as_slice() != KEY_AAD {
+            let valid = new_format
+                || crypto::decrypt(&key, KEY_AAD, &packed)
+                    .is_ok_and(|value| value.as_slice() == KEY_AAD)
+                || crypto::decrypt(&key, LEGACY_KEY_AAD, &packed)
+                    .is_ok_and(|value| value.as_slice() == LEGACY_KEY_AAD);
+            if !valid {
                 return Err(AppError::corrupt());
             }
-            key
+            // Legacy databases keep writing the old row AAD so an update
+            // rollback can still read entries written after the upgrade.
+            let prefix = if new_format {
+                "vault-v1"
+            } else {
+                "local-password-v1"
+            };
+            (key, prefix)
         };
         transaction.commit().map_err(crate::sql_error)?;
         let vault = Self {
             directory,
             key,
+            row_aad_prefix,
             connection: std::sync::Mutex::new(connection),
         };
         Ok(vault)

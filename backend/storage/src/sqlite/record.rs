@@ -9,9 +9,9 @@ pub(crate) struct Row {
 }
 
 impl Row {
-    pub(crate) fn aad(&self) -> Vec<u8> {
+    pub(crate) fn aad_with(&self, prefix: &str) -> Vec<u8> {
         format!(
-            "local-password-v1:{}:{}:{}:{}:{}",
+            "{prefix}:{}:{}:{}:{}:{}",
             self.id, self.revision, self.pinned, self.created_at, self.updated_at
         )
         .into_bytes()
@@ -47,4 +47,6 @@ pub(crate) fn from_sql(row: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
     })
 }
 pub(crate) const COLUMNS: &str = "id, encrypted, revision, pinned, created_at, updated_at";
-pub(crate) const KEY_AAD: &[u8] = b"local-password-manager-key-check-v1";
+pub(crate) const KEY_AAD: &[u8] = b"vault-key-check-v1";
+/// Databases created before the rename keep this marker; both are accepted.
+pub(crate) const LEGACY_KEY_AAD: &[u8] = b"local-password-manager-key-check-v1";

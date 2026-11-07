@@ -5,7 +5,8 @@ use winreg::{
     enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE},
 };
 const KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-const NAME: &str = "LocalPasswordManager.Portable";
+const NAME: &str = "Vault";
+const LEGACY_NAME: &str = "LocalPasswordManager.Portable";
 fn command(executable: &Path, data_directory: &Path) -> String {
     format!(
         "\"{}\" --data-dir \"{}\" --background",
@@ -13,11 +14,25 @@ fn command(executable: &Path, data_directory: &Path) -> String {
         data_directory.display()
     )
 }
+fn migrate_legacy(value: &str) -> Result<()> {
+    set_at(KEY, NAME, true, value)?;
+    set_at(KEY, LEGACY_NAME, false, value)
+}
 pub fn enabled(executable: &Path, data_directory: &Path) -> Result<bool> {
-    enabled_at(KEY, NAME, &command(executable, data_directory))
+    let value = command(executable, data_directory);
+    let current = enabled_at(KEY, NAME, &value)?;
+    let legacy = enabled_at(KEY, LEGACY_NAME, &value)?;
+    if legacy && !current {
+        // Reading settings must not fail because the old value could not be
+        // rewritten; the legacy value still means startup is enabled.
+        let _ = migrate_legacy(&value);
+    }
+    Ok(current || legacy)
 }
 pub fn set(enabled: bool, executable: &Path, data_directory: &Path) -> Result<()> {
-    set_at(KEY, NAME, enabled, &command(executable, data_directory))
+    let value = command(executable, data_directory);
+    set_at(KEY, NAME, enabled, &value)?;
+    set_at(KEY, LEGACY_NAME, false, &value)
 }
 fn enabled_at(path: &str, name: &str, expected: &str) -> Result<bool> {
     let root = RegKey::predef(HKEY_CURRENT_USER);
@@ -63,10 +78,7 @@ mod tests {
     use super::*;
     #[test]
     fn isolated_registry_roundtrip_and_quoted_paths() {
-        let path = format!(
-            "Software\\LocalPasswordManager\\Acceptance\\{}",
-            uuid::Uuid::new_v4()
-        );
+        let path = format!("Software\\Vault\\Acceptance\\{}", uuid::Uuid::new_v4());
         let value = command(
             Path::new("D:\\中文 路径\\App.exe"),
             Path::new("D:\\中文 数据"),
@@ -77,6 +89,10 @@ mod tests {
         assert!(!enabled_at(&path, NAME, &value).unwrap());
         set_at(&path, NAME, true, &value).unwrap();
         assert!(enabled_at(&path, NAME, &value).unwrap());
+        set_at(&path, LEGACY_NAME, true, &value).unwrap();
+        assert!(enabled_at(&path, LEGACY_NAME, &value).unwrap());
+        set_at(&path, LEGACY_NAME, false, &value).unwrap();
+        assert!(!enabled_at(&path, LEGACY_NAME, &value).unwrap());
         set_at(&path, NAME, false, &value).unwrap();
         assert!(!enabled_at(&path, NAME, &value).unwrap());
         RegKey::predef(HKEY_CURRENT_USER)

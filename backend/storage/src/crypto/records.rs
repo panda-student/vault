@@ -45,12 +45,21 @@ impl Vault {
             .map_err(crate::sql_error)?;
         Ok(())
     }
+    fn decrypt_row(&self, row: &Row) -> Result<Zeroizing<Vec<u8>>> {
+        let alternate = if self.row_aad_prefix == "vault-v1" {
+            "local-password-v1"
+        } else {
+            "vault-v1"
+        };
+        crypto::decrypt(&self.key, &row.aad_with(self.row_aad_prefix), &row.packed)
+            .or_else(|_| crypto::decrypt(&self.key, &row.aad_with(alternate), &row.packed))
+    }
     pub(crate) fn decode(&self, row: &Row) -> Result<EntryInput> {
-        let plaintext = crypto::decrypt(&self.key, &row.aad(), &row.packed)?;
+        let plaintext = self.decrypt_row(row)?;
         serde_json::from_slice(&plaintext).map_err(|_| AppError::corrupt())
     }
     pub(crate) fn encode(&self, row: &Row, value: &EntryInput) -> Result<Vec<u8>> {
         let plaintext = Zeroizing::new(serde_json::to_vec(value).map_err(|_| AppError::invalid())?);
-        crypto::encrypt(&self.key, &row.aad(), &plaintext)
+        crypto::encrypt(&self.key, &row.aad_with(self.row_aad_prefix), &plaintext)
     }
 }

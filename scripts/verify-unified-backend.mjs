@@ -52,7 +52,7 @@ for(const [index,order]of ['desktop-first','mcp-first'].entries()){
   check(order+': desktop and both MCP clients use the same host PID',info.backendPid===initial[0]&&JSON.stringify(await hosts())===JSON.stringify(initial));
   if(order==='mcp-first'){for(let n=0;n<30&&launcher.exitCode===null;n++)await sleep(100);check(order+': second launcher exits without creating another backend',launcher.exitCode===0);}
   const canonical='\\\\?\\'+await realpath(exe);
-  const base=join(process.env.LOCALAPPDATA,'LocalPasswordManager','updates',createHash('sha256').update(canonical.toLowerCase()).digest('hex'));
+  const base=join(process.env.LOCALAPPDATA,'Vault','updates',createHash('sha256').update(canonical.toLowerCase()).digest('hex'));
   const names=await readdir(join(base,'services'));
   let activationReply='';
   await new Promise(resolve=>{

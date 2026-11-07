@@ -14,7 +14,7 @@ const root = await mkdtemp(join(tmpdir(), 'vault-quit-recovery-'));
 const exe = join(root, 'vault.exe');
 await copyFile(process.env.VAULT_EXE || 'artifacts/test-build/vault.exe', exe);
 const data = join(root, 'data');
-const coordination = join(process.env.LOCALAPPDATA, 'LocalPasswordManager', 'updates',
+const coordination = join(process.env.LOCALAPPDATA, 'Vault', 'updates',
   createHash('sha256').update(('\\\\?\\' + realpathSync.native(exe)).toLowerCase()).digest('hex'));
 const ps = (script) => execFileSync('powershell.exe', ['-NoProfile', '-Command', script], { encoding: 'utf8', windowsHide: true }).trim();
 const backendPids = () => ps(`@(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq '${exe}' -and $_.CommandLine -match '--backend' } | Select-Object -ExpandProperty ProcessId) -join ','`).split(',').filter(Boolean);

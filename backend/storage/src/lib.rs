@@ -7,7 +7,7 @@ mod tags;
 mod transfer;
 mod trash;
 use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior, params};
-use sqlite::record::{COLUMNS, KEY_AAD, Row, from_sql};
+use sqlite::record::{COLUMNS, KEY_AAD, LEGACY_KEY_AAD, Row, from_sql};
 use std::{
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -22,6 +22,7 @@ use zeroize::Zeroizing;
 pub struct Vault {
     directory: PathBuf,
     key: Zeroizing<Vec<u8>>,
+    row_aad_prefix: &'static str,
     // One connection per vault. Concurrent RPC workers serialize SQL access
     // here, while transaction-local policies still guard every mutation.
     connection: std::sync::Mutex<Connection>,

@@ -24,7 +24,7 @@ await copyFile(from,executable);
 const binary=await readFile(to), original=await readFile(from);
 const report={passed:false,root:appRoot,fromSha256:createHash('sha256').update(original).digest('hex'),toSha256:createHash('sha256').update(binary).digest('hex'),checks:[]};
 const check=(name,ok)=>{report.checks.push({name,passed:!!ok});assert.ok(ok,name);console.log('PASS',name);};
-const keyCommand="Add-Type -AssemblyName System.Security; $p=Join-Path $env:USERPROFILE '.codex/secrets/local-password-manager/update-signing-key.dpapi'; $b=[Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes($p),$null,[Security.Cryptography.DataProtectionScope]::CurrentUser); [Console]::Write([Text.Encoding]::UTF8.GetString($b)); [Array]::Clear($b,0,$b.Length)";
+const keyCommand="Add-Type -AssemblyName System.Security; $p=Join-Path $env:USERPROFILE '.codex/secrets/vault/update-signing-key.dpapi'; if (!(Test-Path -LiteralPath $p)) { $p=Join-Path $env:USERPROFILE '.codex/secrets/local-password-manager/update-signing-key.dpapi' }; $b=[Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes($p),$null,[Security.Cryptography.DataProtectionScope]::CurrentUser); [Console]::Write([Text.Encoding]::UTF8.GetString($b)); [Array]::Clear($b,0,$b.Length)";
 const secret=(await run('powershell.exe',['-NoProfile','-Command',keyCommand],{windowsHide:true})).stdout.trim();
 const privateKey=createPrivateKey({key:Buffer.from(secret,'base64'),format:'der',type:'pkcs8'});
 // Update payloads are the signed NSIS installer itself, not a ZIP or a bare exe.

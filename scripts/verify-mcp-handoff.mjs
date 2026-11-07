@@ -26,7 +26,7 @@ try{
  const entry=await call(a,'create_entries',{kind:'password',title:'shared fixture',url:'https://example.invalid',secret:'FAKE_SHARED_CORE_ONLY_9157'});
  check('second-connection-reads-first-connection-entry',(await call(b,'get_entries',{id:entry.id})).id===entry.id);
  const canonical='\\\\?\\'+await realpath(exe);
- const base=join(process.env.LOCALAPPDATA,'LocalPasswordManager','updates',createHash('sha256').update(canonical.toLowerCase()).digest('hex'));
+ const base=join(process.env.LOCALAPPDATA,'Vault','updates',createHash('sha256').update(canonical.toLowerCase()).digest('hex'));
  const token=randomUUID(),flag=join(base,'pause.json');
  pauseFlag=flag;
  lock=spawn('python',['-c',"import sqlite3,sys,time; c=sqlite3.connect(sys.argv[1]); c.execute('BEGIN IMMEDIATE'); print('locked',flush=True); time.sleep(3); c.commit(); c.close()",join(data,'vault.db')],{windowsHide:true,stdio:['ignore','pipe','pipe']});
