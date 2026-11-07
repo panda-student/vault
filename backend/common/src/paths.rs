@@ -12,18 +12,23 @@ pub fn coordination_directory(executable: &Path) -> Result<PathBuf> {
         Sha256::digest(canonical.to_string_lossy().to_lowercase().as_bytes())
     );
     let local = PathBuf::from(std::env::var_os("LOCALAPPDATA").ok_or_else(AppError::storage)?);
-    let directory = coordination_root(&local).join("updates").join(&name);
-    if fs::create_dir_all(&directory).is_err() {
+    directory_in(&local, &name)
+}
+
+/// Returns the real directory, never a path that runs through the `Vault`
+/// junction: some security filter drivers refuse to create new entries below a
+/// junction, which would make every bridge fail while registering itself.
+fn directory_in(local: &Path, name: &str) -> Result<PathBuf> {
+    let resolve = |root: PathBuf| -> std::io::Result<PathBuf> {
+        let directory = root.join("updates").join(name);
+        fs::create_dir_all(&directory)?;
+        fs::canonicalize(directory)
+    };
+    resolve(coordination_root(local)).or_else(|_| {
         // A dangling junction or a non-directory at `Vault` must not wedge
         // startup; the legacy path is still valid for the current update.
-        let legacy = local
-            .join("LocalPasswordManager")
-            .join("updates")
-            .join(&name);
-        fs::create_dir_all(&legacy).map_err(|_| AppError::storage())?;
-        return Ok(legacy);
-    }
-    Ok(directory)
+        resolve(local.join("LocalPasswordManager")).map_err(|_| AppError::storage())
+    })
 }
 
 /// Existing profiles keep their coordination state while the visible directory
@@ -101,7 +106,19 @@ fn create_junction(_: &Path, _: &Path) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::coordination_root;
+    use super::{coordination_root, directory_in};
+    #[test]
+    fn directory_avoids_the_junction() {
+        let temp = tempfile::tempdir().unwrap();
+        let legacy = temp.path().join("LocalPasswordManager");
+        std::fs::create_dir_all(&legacy).unwrap();
+        let directory = directory_in(temp.path(), "abc").unwrap();
+        let real = std::fs::canonicalize(&legacy).unwrap();
+        if coordination_root(temp.path()) == temp.path().join("Vault") {
+            assert!(directory.starts_with(&real), "{directory:?}");
+        }
+        assert!(directory.is_dir());
+    }
     #[test]
     fn fresh_profile_uses_vault() {
         let temp = tempfile::tempdir().unwrap();
