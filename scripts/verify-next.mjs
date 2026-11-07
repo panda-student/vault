@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-const executable=resolve(process.env.VAULT_EXE||'target/release/local-password-manager.exe');
+const executable=resolve(process.env.VAULT_EXE||'target/release/vault.exe');
 const root=await mkdtemp(join(tmpdir(),'vault-next-'));
 const data=join(root,'data'),report={passed:false,checks:[],root};
 const check=(name,ok)=>{report.checks.push({name,passed:!!ok});assert.ok(ok,name);console.log('PASS',name);};

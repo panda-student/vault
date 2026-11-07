@@ -1,6 +1,6 @@
 [package]
-name = "local-password-manager"
-version = "0.6.2"
+name = "vault"
+version.workspace = true
 description = "Portable Windows password and API credential manager"
 edition = "2024"
 rust-version = "1.90"

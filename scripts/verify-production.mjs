@@ -4,7 +4,7 @@ import { mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 const executable = resolve(
-  process.env.VAULT_EXE || "target/release/local-password-manager.exe",
+  process.env.VAULT_EXE || "target/release/vault.exe",
 );
 const info = JSON.parse(
   execFileSync(executable, ["--build-info"], {

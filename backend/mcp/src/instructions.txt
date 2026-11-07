@@ -41,7 +41,7 @@ open, and the user may decline or ignore the request.
 restore_entries and pin_entries act on one entry; organize renames or deletes one tag
 globally and cannot grant MCP new permissions.
 
-Batch-first CRUD tools accept items or one item directly; update/delete require
+Batch-first CRUD tools accept items with 1-100 objects; update/delete require
 expectedRevision and batch writes are atomic.
 
 Validation errors include a details array naming the exact field and reason; fix the

@@ -1,19 +1,50 @@
 // Signed, version-bound update metadata. Private keys are never written to the repository.
+import { execFileSync } from 'node:child_process';
 import { generateKeyPairSync, createPrivateKey, createPublicKey, sign, verify, createHash } from 'node:crypto';
-import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import assert from 'node:assert/strict';
 
 const [command, ...args] = process.argv.slice(2);
-if (command === 'validate') {
-  for (const entry of await readdir('backend',{withFileTypes:true})) {
-    if(!entry.isDirectory())continue;
-    let manifest;try{manifest=await readFile(`backend/${entry.name}/Cargo.toml`,'utf8');}catch(error){if(error.code==='ENOENT')continue;throw error;}
-    assert.equal(manifest.match(/^version = "([^"]+)"/m)?.[1],JSON.parse(await readFile('package.json','utf8')).version,entry.name);
+
+const readJson = async (path) => JSON.parse(await readFile(path, 'utf8'));
+const packageVersion = async () => (await readJson('package.json')).version;
+
+function workspacePackages() {
+  const metadata = JSON.parse(execFileSync('cargo', ['metadata', '--locked', '--no-deps', '--format-version', '1'], { encoding: 'utf8' }));
+  return metadata.packages;
+}
+
+const inheritsWorkspaceVersion = (manifest) =>
+  /^version\s*\.\s*workspace\s*=\s*true\b/m.test(manifest) ||
+  /^version\s*=\s*\{\s*workspace\s*=\s*true\s*\}/m.test(manifest);
+
+async function tauriVersion() {
+  const configPath = 'src-tauri/tauri.conf.json';
+  const config = await readJson(configPath);
+  if (typeof config.version !== 'string') return config.version;
+  // Tauri treats an existing path as a package.json and otherwise as a semver.
+  const path = resolve(dirname(configPath), config.version);
+  if (existsSync(path)) return (await readJson(path)).version;
+  if (/[\\/]/.test(config.version) || config.version.endsWith('.json')) {
+    throw new Error(`tauri.conf.json version path does not exist: ${path}`);
   }
-  const version = JSON.parse(await readFile('package.json', 'utf8')).version;
-  assert.equal((await readFile('src-tauri/Cargo.toml','utf8')).match(/^version = "([^"]+)"/m)?.[1], version);
-  assert.equal(JSON.parse(await readFile('src-tauri/tauri.conf.json','utf8')).version, version);
+  return config.version;
+}
+
+async function assertVersions(version) {
+  for (const pkg of workspacePackages()) {
+    assert.equal(pkg.version, version, `${pkg.name} must resolve to ${version}`);
+    const manifest = await readFile(pkg.manifest_path, 'utf8');
+    assert.ok(inheritsWorkspaceVersion(manifest), `${pkg.name} must inherit the [workspace.package] version`);
+  }
+  assert.equal(await tauriVersion(), version, 'tauri.conf.json version');
+}
+
+if (command === 'validate') {
+  const version = await packageVersion();
+  await assertVersions(version);
   if (process.env.GITHUB_REF?.startsWith('refs/tags/v')) {
     assert.match(version, /^\d+\.\d+\.\d+$/, 'Stable release tags require a stable version');
     assert.equal(process.env.GITHUB_REF_NAME, `v${version}`);
@@ -29,12 +60,10 @@ if (command === 'validate') {
   await writeFile(publicPath, raw.toString('base64') + '\n', { flag: 'wx' });
 } else if (command === 'manifest') {
   const [installer, output, tag, notesFile] = args;
-  const version = JSON.parse(await readFile('package.json', 'utf8')).version;
+  const version = await packageVersion();
   assert.match(version, /^\d+\.\d+\.\d+$/, 'Only stable versions enter the update feed');
   assert.equal(tag, `v${version}`, 'Tag and package version must match');
-  const cargo = await readFile('src-tauri/Cargo.toml', 'utf8');
-  assert.equal(cargo.match(/^version = "([^"]+)"/m)?.[1], version);
-  assert.equal(JSON.parse(await readFile('src-tauri/tauri.conf.json', 'utf8')).version, version);
+  await assertVersions(version);
   const bytes = await readFile(installer);
   const privateKey = createPrivateKey({ key: Buffer.from(process.env.VAULT_UPDATE_SIGNING_KEY || '', 'base64'), format: 'der', type: 'pkcs8' });
   const raw = (await readFile('backend/updater/update-public-key.txt', 'utf8')).trim();

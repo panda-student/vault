@@ -7,7 +7,7 @@ function Get-Sha256([string]$Path) {
     finally { $stream.Dispose();$hasher.Dispose() }
 }
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$releaseBinary = Join-Path $projectRoot 'target\release\local-password-manager.exe'
+$releaseBinary = Join-Path $projectRoot 'target\release\vault.exe'
 if (!(Test-Path -LiteralPath $releaseBinary)) { throw 'Run npm run desktop:build first.' }
 $previousExe = $env:VAULT_EXE
 try {

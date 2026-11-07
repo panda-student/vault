@@ -20,5 +20,5 @@
     "vault-transfer"
   ],
   "vault-mcp": ["vault-contracts", "vault-core", "vault-platform"],
-  "local-password-manager": ["vault-core", "vault-mcp"]
+  "vault": ["vault-core", "vault-mcp"]
 }

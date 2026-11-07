@@ -86,7 +86,7 @@ try {
     });
   npm("Production release build", "desktop:build");
   node("Production isolation", "scripts/verify-production.mjs", {
-    VAULT_EXE: resolve("target/release/local-password-manager.exe"),
+    VAULT_EXE: resolve("target/release/vault.exe"),
   });
   ps("Production installer", "scripts/package-installer.ps1", [
     "-ArtifactDirectory",

@@ -41,7 +41,7 @@ fn signed_payload_rejects_tampering_wrong_key_and_downgrade() {
 fn updates_reject_previous_repositories_and_manifest_formats() {
     let (_, key) = signed("1.2.3", b"MZtest");
     let mut manifest = manifest_json("1.2.3", b"MZtest");
-    for repository in ["local-password-manager", "untrusted"] {
+    for repository in ["old-repository", "untrusted"] {
         manifest.url = format!(
             "https://github.com/panda-student/{repository}/releases/download/v1.2.3/vault-1.2.3-setup.exe"
         );

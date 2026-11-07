@@ -40,7 +40,7 @@
 - 发布内容：`vault-<version>-setup.exe`、`latest.json`。说明来自 `docs/releases/<version>.md`，缺失则失败。
 - 发布脚本位于 `scripts/ci/`。
 
-发布新版本的步骤：修改版本号（package.json、src-tauri、backend 各 Cargo.toml、tauri.conf.json），写 `docs/releases/<version>.md`，合并到 main。
+发布新版本的步骤：修改 `package.json` 的版本号和根 `Cargo.toml` 的 `[workspace.package] version`（各 Cargo 成员使用 `version.workspace = true`，`tauri.conf.json` 直接读取 `../package.json`），运行 `cargo metadata` 刷新 `Cargo.lock`，写 `docs/releases/<version>.md`，合并到 main。
 
 ## 数据与失败处理
 

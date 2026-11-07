@@ -12,7 +12,7 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 const run=promisify(execFile),sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const root=await realpath(await mkdtemp(join(tmpdir(),'vault-unified-backend-')));
 const agent=process.env.AGENT_BROWSER_EXE||join(dirname(process.execPath),'node_modules/agent-browser/bin/agent-browser-win32-x64.exe');
-const source=resolve(process.env.VAULT_EXE||'target/debug/local-password-manager.exe');
+const source=resolve(process.env.VAULT_EXE||'target/debug/vault.exe');
 const report={passed:false,root,executableSha256:createHash('sha256').update(await readFile(source)).digest('hex'),checks:[]};
 const check=(name,ok)=>{report.checks.push({name,passed:!!ok});console.log(`${ok?'PASS':'FAIL'} ${name}`);if(!ok)throw Error(name);};
 const call=async(c,name,args={})=>{const r=await c.callTool({name,arguments:args});return {failed:!!r.isError,value:r.structuredContent??JSON.parse(r.content.find(c=>c.type==='text').text)};};

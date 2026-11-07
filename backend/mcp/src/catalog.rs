@@ -2,6 +2,14 @@
 use rmcp::model::{Tool, ToolAnnotations};
 use serde_json::{Value, json};
 use std::sync::Arc;
+/// Tools whose input schema is rewritten to the batch-only form.
+const BATCH_TOOLS: [&str; 5] = [
+    "search_entries",
+    "get_entries",
+    "create_entries",
+    "update_entries",
+    "delete_entries",
+];
 pub(super) fn tools() -> Vec<Tool> {
     let property = |name: &str| {
         json!({
@@ -348,40 +356,28 @@ pub(super) fn tools() -> Vec<Tool> {
 }).as_object().unwrap().clone()),
     ];
     for tool in &mut result {
-        if matches!(
-            tool.name.as_ref(),
-            "search_entries"
-                | "get_entries"
-                | "create_entries"
-                | "update_entries"
-                | "delete_entries"
-        ) {
+        if BATCH_TOOLS.contains(&tool.name.as_ref()) {
             let single = Value::Object((*tool.input_schema).clone());
-            let mut properties = single["properties"].clone();
-            properties["items"] = json!({
-                "type": "array",
-                "minItems": 1,
-                "maxItems": 100,
-                "items": single
-            });
+            // Claude Code drops MCP tools whose input schema has a top-level
+            // combinator (oneOf/anyOf/allOf): it treats them as requiring
+            // normalization, and normalization is gated per server URL, which
+            // a stdio server never has. Batch already covers a single call, so
+            // declare only the batch form; the runtime `one_or_many` parser in
+            // rpc.rs still accepts a single object for compatibility.
             tool.input_schema = Arc::new(
                 json!({
                     "type": "object",
-                    "properties": properties,
-                    "oneOf": [
-                        single,
-                        {
-                            "type": "object",
-                            "properties": {
-                                "items": properties[
-                                    "items"
-                                ]
-                            },
-                            "required": [
-                                "items"
-                            ],
-                            "additionalProperties": false
+                    "properties": {
+                        "items": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 100,
+                            "description": "1-100 objects, each with the tool's single-entry fields.",
+                            "items": single
                         }
+                    },
+                    "required": [
+                        "items"
                     ],
                     "additionalProperties": false
                 })
@@ -389,8 +385,73 @@ pub(super) fn tools() -> Vec<Tool> {
                 .unwrap()
                 .clone(),
             );
-            tool.description = Some(format!("Batch-first: pass items with 1-100 objects, or one object's fields directly. Batch responses have results in input order; direct single input preserves its single response. Batch writes are atomic; duplicate update/delete IDs are rejected. {}", tool.description.as_deref().unwrap_or("")).into());
+            tool.description = Some(format!("Batch-first: pass items with 1-100 objects. Batch responses have results in input order; batch writes are atomic; duplicate update/delete IDs are rejected. {}", tool.description.as_deref().unwrap_or("")).into());
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BATCH_TOOLS, tools};
+    use serde_json::Value;
+
+    fn schema(name: &str) -> Value {
+        let tool = tools()
+            .into_iter()
+            .find(|tool| tool.name == name)
+            .expect("tool exists");
+        Value::Object((*tool.input_schema).clone())
+    }
+
+    #[test]
+    fn no_tool_has_a_top_level_combinator() {
+        // Claude Code skips MCP tools whose input schema uses a root-level
+        // oneOf/anyOf/allOf, because it only normalizes them for URL servers.
+        // Every tool must therefore have a plain object root.
+        for tool in tools() {
+            let schema = Value::Object((*tool.input_schema).clone());
+            assert_eq!(
+                schema.get("type").and_then(Value::as_str),
+                Some("object"),
+                "{} must have an object root",
+                tool.name
+            );
+            for combinator in ["oneOf", "anyOf", "allOf"] {
+                assert!(
+                    schema.get(combinator).is_none(),
+                    "{} has a top-level {}; Claude Code would drop it",
+                    tool.name,
+                    combinator
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn batch_tools_declare_only_items() {
+        for name in BATCH_TOOLS {
+            let schema = schema(name);
+            let properties = schema["properties"]
+                .as_object()
+                .expect("properties must be an object");
+            assert_eq!(
+                properties.len(),
+                1,
+                "{} must only declare the batch form",
+                name
+            );
+            assert_eq!(
+                schema["required"],
+                serde_json::json!(["items"]),
+                "{} must require items",
+                name
+            );
+            let items = &schema["properties"]["items"];
+            assert_eq!(items["type"], "array", "{} items type", name);
+            assert_eq!(items["minItems"], 1, "{} minItems", name);
+            assert_eq!(items["maxItems"], 100, "{} maxItems", name);
+            assert_eq!(items["items"]["type"], "object", "{} item type", name);
+        }
+    }
 }

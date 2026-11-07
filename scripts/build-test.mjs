@@ -23,7 +23,7 @@ for (const [command, args] of [
     [
       "build",
       "-p",
-      "local-password-manager",
+      "vault",
       "--locked",
       "--features",
       "test-support,custom-protocol",
@@ -41,7 +41,7 @@ for (const [command, args] of [
 mkdirSync("artifacts/test-build", { recursive: true });
 const target = resolve("artifacts/test-build/vault.exe");
 copyFileSync(
-  `target/${release ? "release" : "debug"}/local-password-manager.exe`,
+  `target/${release ? "release" : "debug"}/vault.exe`,
   target,
 );
 const info = JSON.parse(

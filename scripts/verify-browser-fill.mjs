@@ -32,7 +32,7 @@ const session = 'vault-browser-fill-' + randomUUID();
 const browserPath = process.env.VAULT_BROWSER_EXE || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const browser = async (...args) => (await runBrowser(agent, ['--session', session, ...args], {timeout:30000, maxBuffer:1024*1024, windowsHide:true})).stdout.trim();
 const evaluate = async expression => JSON.parse(await browser('eval', expression));
-const executable = resolve(process.env.VAULT_EXE || 'target/release/local-password-manager.exe');
+const executable = resolve(process.env.VAULT_EXE || 'target/release/vault.exe');
 const client = new Client({name:'isolated-browser-fill-audit', version:'1'});
 const transport = new StdioClientTransport({command:executable, args:['--mcp','--data-dir',join(directory,'data')], stderr:'pipe'});
 transport.stderr?.resume();

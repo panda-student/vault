@@ -1,7 +1,7 @@
 {
-  "name": "local-password-manager",
+  "name": "vault",
   "private": true,
-  "version": "0.6.2",
+  "version": "0.6.3",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
@@ -18,8 +18,7 @@
     "format:check": "prettier --check frontend tests/support/frontend",
     "verify:regression": "node scripts/verify-regression.mjs",
     "build:test": "vue-tsc --noEmit --noUnusedLocals --noUnusedParameters && vite build --mode test",
-    "desktop:test": "node scripts/build-test.mjs",
-    "verify:prepush": "node scripts/preflight.mjs"
+    "desktop:test": "node scripts/build-test.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.4",

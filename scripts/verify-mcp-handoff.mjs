@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 const run=promisify(execFile),pause=ms=>new Promise(r=>setTimeout(r,ms));
 const root=await realpath(await mkdtemp(join(tmpdir(),'vault-mcp-shared-')));
 const exe=join(root,'vault.exe'),data=join(root,'data');
-await copyFile(resolve(process.env.VAULT_EXE||'target/release/local-password-manager.exe'),exe);
+await copyFile(resolve(process.env.VAULT_EXE||'target/release/vault.exe'),exe);
 const clients=[],report={passed:false,root,executableSha256:createHash('sha256').update(await readFile(exe)).digest('hex'),checks:[]};
 let lock,pauseFlag;
 const check=(name,ok)=>{report.checks.push({name,passed:!!ok});assert.ok(ok,name);console.log('PASS',name);};

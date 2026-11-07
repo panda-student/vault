@@ -4,7 +4,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
 const executable = resolve(
-  process.env.VAULT_EXE || "target/debug/local-password-manager.exe",
+  process.env.VAULT_EXE || "target/debug/vault.exe",
 );
 const bytes = await readFile(executable);
 const report = {
