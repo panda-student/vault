@@ -105,6 +105,8 @@ try{
  if(!closed){desktop.kill();throw Error('Desktop test timeout');}
  const smoke=await readFile(smokePath,'utf8').catch(()=>null);if(!smoke)throw Error(`Desktop exited with code ${closed[0]} without a smoke report`);report.desktop=JSON.parse(smoke);
  check('native-desktop-suite',closed[0]===0&&report.desktop.passed);
+ // The helper writes its report after the last click, which can be after the desktop exits.
+ if(dialogHelper.exitCode===null&&dialogHelper.signalCode===null)await Promise.race([once(dialogHelper,'exit'),new Promise(r=>setTimeout(r,30000).unref())]);
  report.nativeTrash=JSON.parse((await readFile(dialogReport,'utf8')).replace(/^\uFEFF/,''));check('native-human-confirmation-cancel-and-confirm',report.nativeTrash.passed);
  }else{report.desktopSkipped=true;}
  report.executableSha256=createHash('sha256').update(await readFile(executable)).digest('hex');

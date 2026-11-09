@@ -11,7 +11,9 @@ concurrency:
   group: windows-${{ github.ref }}
   cancel-in-progress: false
 # Pull requests run only the fast checks. Pushes to main also build and publish.
-# Checks, verify and build run in parallel.
+# Checks, verify and build run in parallel. The verify and build caches are
+# keyed by the [profile.*] sections of Cargo.toml, which the automatic key
+# ignores; a profile change would otherwise restore stale artifacts.
 jobs:
   checks:
     runs-on: windows-latest
@@ -58,10 +60,15 @@ jobs:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@1.99.0
+      - name: Hash Cargo profiles
+        id: profiles
+        shell: bash
+        run: echo "hash=$(sed -n '/^\[profile/,$p' Cargo.toml | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
-          shared-key: verify-ci-test
+          shared-key: verify
+          key: ${{ steps.profiles.outputs.hash }}
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Test build and integration checks
@@ -100,13 +107,15 @@ jobs:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@1.99.0
+      - name: Hash Cargo profiles
+        id: profiles
+        shell: bash
+        run: echo "hash=$(sed -n '/^\[profile/,$p' Cargo.toml | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
-          # The cache key does not see [profile.*] changes in Cargo.toml: rename
-          # these keys when a profile changes, or stale artifacts are restored
-          # and the rebuilt ones are never saved.
-          shared-key: build-thin-lto
+          shared-key: build
+          key: ${{ steps.profiles.outputs.hash }}
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Restore NSIS installer tool
