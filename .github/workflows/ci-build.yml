@@ -73,7 +73,9 @@ jobs:
           name: vault-verify-failure-${{ github.sha }}
           path: |
             artifacts/preflight-*.json
+            artifacts/*verification.json
             artifacts/regression/**
+            docs/evidence/*verification.json
           retention-days: 7
           if-no-files-found: ignore
       - name: Upload timing report
@@ -101,7 +103,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
-          shared-key: build
+          # The cache key does not see [profile.*] changes in Cargo.toml: rename
+          # these keys when a profile changes, or stale artifacts are restored
+          # and the rebuilt ones are never saved.
+          shared-key: build-thin-lto
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Restore NSIS installer tool

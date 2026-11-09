@@ -103,7 +103,7 @@ try{
  dialogHelper=spawn('powershell',['-NoProfile','-ExecutionPolicy','Bypass','-File',resolve('scripts/verify-native-trash.ps1'),'-ProcessId',String(desktop.pid),'-ReportPath',dialogReport],{windowsHide:true,stdio:'ignore'});
  const closed=await Promise.race([once(desktop,'exit'),new Promise(r=>setTimeout(()=>r(null),240000).unref())]);
  if(!closed){desktop.kill();throw Error('Desktop test timeout');}
- report.desktop=JSON.parse(await readFile(smokePath,'utf8'));
+ const smoke=await readFile(smokePath,'utf8').catch(()=>null);if(!smoke)throw Error(`Desktop exited with code ${closed[0]} without a smoke report`);report.desktop=JSON.parse(smoke);
  check('native-desktop-suite',closed[0]===0&&report.desktop.passed);
  report.nativeTrash=JSON.parse((await readFile(dialogReport,'utf8')).replace(/^\uFEFF/,''));check('native-human-confirmation-cancel-and-confirm',report.nativeTrash.passed);
  }else{report.desktopSkipped=true;}

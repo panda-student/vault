@@ -5,6 +5,7 @@ resolver = "3"
 [workspace.package]
 version = "0.6.7"
 
+# CI caches these builds; rename the shared-key in ci-build.yml after a change.
 [profile.release]
 panic = "abort"
 strip = true
@@ -19,3 +20,9 @@ opt-level = "s"
 inherits = "release"
 lto = false
 codegen-units = 16
+opt-level = 0
+
+# Dependencies stay optimized (and cached); only the workspace crates, which
+# CI rebuilds every run, skip optimization.
+[profile.ci-test.package."*"]
+opt-level = "s"
