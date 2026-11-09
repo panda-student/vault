@@ -67,8 +67,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
-          shared-key: verify
-          key: ${{ steps.profiles.outputs.hash }}
+          # rust-cache ignores `key` once shared-key is set, so the hash goes here.
+          shared-key: verify-${{ steps.profiles.outputs.hash }}
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Test build and integration checks
@@ -114,8 +114,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
-          shared-key: build
-          key: ${{ steps.profiles.outputs.hash }}
+          # rust-cache ignores `key` once shared-key is set, so the hash goes here.
+          shared-key: build-${{ steps.profiles.outputs.hash }}
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Restore NSIS installer tool
