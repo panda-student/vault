@@ -20,10 +20,8 @@ jobs:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: '0'
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -35,11 +33,12 @@ jobs:
           workspaces: .
           shared-key: checks
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Checks
         run: node scripts/preflight.mjs --ci --phase=checks
       - name: Upload timing report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: timing-checks-${{ github.sha }}
           path: artifacts/preflight-*.json
@@ -53,10 +52,8 @@ jobs:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: '0'
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -64,13 +61,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
-          shared-key: verify
+          shared-key: verify-ci-test
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Test build and integration checks
         run: node scripts/preflight.mjs --ci --phase=verify
       - name: Preserve failed verification diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vault-verify-failure-${{ github.sha }}
           path: |
@@ -80,7 +78,7 @@ jobs:
           if-no-files-found: ignore
       - name: Upload timing report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: timing-verify-${{ github.sha }}
           path: artifacts/preflight-*.json
@@ -94,10 +92,8 @@ jobs:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: '0'
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -107,8 +103,9 @@ jobs:
           workspaces: .
           shared-key: build
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Restore NSIS installer tool
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: artifacts/tools/nsis-3.13
           key: nsis-3.13
@@ -116,7 +113,7 @@ jobs:
         run: node scripts/preflight.mjs --ci --phase=build
       - name: Preserve failed build diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vault-build-failure-${{ github.sha }}
           path: |
@@ -126,14 +123,14 @@ jobs:
           if-no-files-found: ignore
       - name: Upload timing report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: timing-build-${{ github.sha }}
           path: artifacts/preflight-*.json
           retention-days: 7
           if-no-files-found: ignore
       - name: Preserve installer for publishing
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vault-build-${{ github.sha }}
           path: |
@@ -148,11 +145,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: vault-build-${{ github.sha }}
           path: artifacts

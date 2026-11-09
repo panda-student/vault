@@ -3,7 +3,13 @@ import { spawnSync, execFileSync } from "node:child_process";
 import { mkdirSync, copyFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { cargo } from "./lib/cargo.mjs";
-const release = process.argv.includes("--release");
+// --release builds the shipping profile; --profile=<name> picks a Cargo profile.
+const profileArg = process.argv.find((arg) => arg.startsWith("--profile="));
+const profile = profileArg
+  ? profileArg.slice("--profile=".length)
+  : process.argv.includes("--release")
+    ? "release"
+    : "dev";
 // Preflight type checks once in its own job, so its build can skip the repeat.
 const skipTypecheck = process.argv.includes("--skip-typecheck");
 for (const [command, args] of [
@@ -33,7 +39,7 @@ for (const [command, args] of [
       "--locked",
       "--features",
       "test-support,custom-protocol",
-      ...(release ? ["--release"] : []),
+      ...(profile === "dev" ? [] : ["--profile", profile]),
     ],
   ],
 ]) {
@@ -47,7 +53,7 @@ for (const [command, args] of [
 mkdirSync("artifacts/test-build", { recursive: true });
 const target = resolve("artifacts/test-build/vault.exe");
 copyFileSync(
-  `target/${release ? "release" : "debug"}/vault.exe`,
+  `target/${profile === "dev" ? "debug" : profile}/vault.exe`,
   target,
 );
 const info = JSON.parse(

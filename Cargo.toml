@@ -11,3 +11,10 @@ strip = true
 lto = true
 codegen-units = 1
 opt-level = "s"
+
+# CI integration checks exercise behavior, not the shipped binary: skip the
+# whole-program optimization that dominates release build time.
+[profile.ci-test]
+inherits = "release"
+lto = false
+codegen-units = 16

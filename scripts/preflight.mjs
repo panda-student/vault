@@ -89,15 +89,14 @@ function checks() {
   run("Rust tests", cargo, ["test", "--workspace", "--locked"]);
   generateDependencyNotices();
 }
-// The test executable and the production one both end up at target/release and
-// embed different frontends, so CI builds them in separate jobs. Locally the
-// phases run in order and the production one overwrites the test build.
+// The integration checks exercise behavior, so the test executable uses the
+// ci-test profile (release without whole-program LTO) in its own target
+// directory. The type check already ran in `checks`.
 function verify() {
   installDependencies();
-  // The type check already ran in `checks`.
-  run("Test-only release build", process.execPath, [
+  run("Test-only build", process.execPath, [
     "scripts/build-test.mjs",
-    "--release",
+    "--profile=ci-test",
     "--skip-typecheck",
   ]);
   for (const name of ["next", "permissions", "mcp-handoff", "quit-recovery"])
