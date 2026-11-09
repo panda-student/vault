@@ -8,8 +8,9 @@ version = "0.6.7"
 [profile.release]
 panic = "abort"
 strip = true
-lto = true
-codegen-units = 1
+# Thin LTO halves the release link time; the executable grows about 1 MB.
+lto = "thin"
+codegen-units = 16
 opt-level = "s"
 
 # CI integration checks exercise behavior, not the shipped binary: skip the
