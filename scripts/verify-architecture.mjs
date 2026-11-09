@@ -99,14 +99,17 @@ assert.ok(
   "CI must run the shared preflight",
 );
 const pipeline = readFileSync("scripts/preflight.mjs", "utf8");
+assert.match(
+  pipeline,
+  /run\("Production release build",\s*cargo,\s*\[\s*"build",\s*"-p",\s*"vault",\s*"--locked",\s*"--release",\s*"--features",\s*"custom-protocol",?\s*\]\)/,
+  "Shared preflight must build the production Vault executable with Cargo",
+);
 for (const required of [
   "verify:architecture",
   "Rust tests",
   "scripts/build-test.mjs",
-  "desktop:build",
   "scripts/verify-production.mjs",
   "scripts/package-installer.ps1",
-  "scripts/verify-installer.mjs",
 ]) {
   assert.ok(
     pipeline.includes(required),

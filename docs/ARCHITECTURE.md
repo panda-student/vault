@@ -134,12 +134,8 @@ node scripts/verify-write.mjs
 
 交互架构图保存在 `docs/prototypes/architecture.html`，源规格为同目录的 `architecture.json`。图中的统一核心同时表示代码复用和运行时共享：桌面与 MCP 在同一宿主中持有身份隔离的会话，共享一份核心服务实例。
 
-## 单后端实测
-
-先运行 `node scripts/tauri.mjs build --debug --no-bundle`，再运行 `node scripts/verify-unified-backend.mjs`。它在隔离目录启动实际 Tauri WebView 与两个 MCP 客户端，分别验证桌面先启动和 MCP 先启动、唯一后台 PID、双向读写、实时权限撤销与恢复、激活通道拒绝其他进程、关闭和重开窗口不重建后台。报告为 `artifacts/unified-backend-verification.json`。调试端口仅存在于显式指定端口的 debug 构建，正式版没有该入口。
-
 ## 可重复的本地验收
 
 运行 `node scripts/tauri.mjs build --debug --no-bundle` 后，执行 `npm run verify:regression`。该命令串行执行 MCP/桌面、权限、更新连接保留、共享宿主、原生编辑器与 Edge 密码框测试，避免并行测试争夺焦点。通过 VAULT_EXE 可指定同一构建的副本。测试均创建隔离目录，只使用虚构凭据。日志和带 EXE SHA-256 的汇总保存在 artifacts/regression/。
 
-在线更新完整替换/回退另用 scripts/verify-update.mjs，需要两个独立版本的 debug 构建和本机已配置的签名密钥；安装覆盖测试用 scripts/verify-installer-handoff.mjs。报告只证明对应本地构建，不等同于远程 CI 或已发布版本。
+在线更新完整替换/回退另用 scripts/verify-update.mjs，需要两个独立版本的 debug 构建和本机已配置的签名密钥。报告只证明对应本地构建，不等同于远程 CI 或已发布版本。

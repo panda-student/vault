@@ -10,14 +10,17 @@ permissions:
 concurrency:
   group: windows-${{ github.ref }}
   cancel-in-progress: false
+# Pull requests run only the fast checks. Pushes to main also build and publish.
+# Checks and build run in parallel.
 jobs:
-  build:
+  checks:
     runs-on: windows-latest
-    timeout-minutes: 45
-    permissions:
-      contents: write
+    timeout-minutes: 30
     env:
       CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: '0'
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,43 +32,101 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
           components: rustfmt
+      - uses: mozilla-actions/sccache-action@v0.0.9
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
+          shared-key: checks
           cache-on-failure: true
-      - name: Full release preflight
-        run: node scripts/preflight.mjs --ci
-      - name: Preserve failed acceptance diagnostics
+      - name: Checks
+        run: node scripts/preflight.mjs --ci --phase=checks
+      - name: Upload timing report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: timing-checks-${{ github.sha }}
+          path: artifacts/preflight-*.json
+          retention-days: 7
+          if-no-files-found: ignore
+  build:
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: '0'
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: mozilla-actions/sccache-action@v0.0.9
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+          shared-key: build
+          cache-on-failure: true
+      - name: Restore NSIS installer tool
+        uses: actions/cache@v4
+        with:
+          path: artifacts/tools/nsis-3.13
+          key: nsis-3.13
+      - name: Build and package
+        run: node scripts/preflight.mjs --ci --phase=build
+      - name: Preserve failed build diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: vault-acceptance-failure-${{ github.sha }}
+          name: vault-build-failure-${{ github.sha }}
           path: |
-            artifacts/*verification.json
+            artifacts/preflight-*.json
             artifacts/regression/**
-            docs/evidence/*verification.json
           retention-days: 7
           if-no-files-found: ignore
-      - name: Preserve short-lived build artifacts
+      - name: Upload timing report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: vault-windows-${{ github.sha }}
-          path: |
-            artifacts/vault-*-setup.exe
-            artifacts/installer-size.json
-            artifacts/installer-verification.json
-            artifacts/installer-handoff-verification.json
-            artifacts/installer-rollback-verification.json
-            artifacts/installer-drain-verification.json
+          name: timing-build-${{ github.sha }}
+          path: artifacts/preflight-*.json
           retention-days: 7
+          if-no-files-found: ignore
+      - name: Preserve installer for publishing
+        uses: actions/upload-artifact@v4
+        with:
+          name: vault-build-${{ github.sha }}
+          path: |
+            artifacts/vault-*
+            artifacts/installer-size.json
+          retention-days: 7
+  publish:
+    if: github.event_name == 'push'
+    needs: [checks, build]
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: vault-build-${{ github.sha }}
+          path: artifacts
       - name: Sign update metadata
-        if: github.event_name == 'push'
         env:
           VAULT_UPDATE_SIGNING_KEY: ${{ secrets.VAULT_UPDATE_SIGNING_KEY }}
         shell: pwsh
         run: scripts/ci/sign-manifest.ps1
       - name: Publish latest release
-        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.sha }}

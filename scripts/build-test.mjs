@@ -4,16 +4,22 @@ import { mkdirSync, copyFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { cargo } from "./lib/cargo.mjs";
 const release = process.argv.includes("--release");
+// Preflight type checks once in its own job, so its build can skip the repeat.
+const skipTypecheck = process.argv.includes("--skip-typecheck");
 for (const [command, args] of [
-  [
-    process.execPath,
-    [
-      "node_modules/vue-tsc/bin/vue-tsc.js",
-      "--noEmit",
-      "--noUnusedLocals",
-      "--noUnusedParameters",
-    ],
-  ],
+  ...(skipTypecheck
+    ? []
+    : [
+        [
+          process.execPath,
+          [
+            "node_modules/vue-tsc/bin/vue-tsc.js",
+            "--noEmit",
+            "--noUnusedLocals",
+            "--noUnusedParameters",
+          ],
+        ],
+      ]),
   [
     process.execPath,
     ["node_modules/vite/bin/vite.js", "build", "--mode", "test"],

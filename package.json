@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
-    "build": "vue-tsc --noEmit --noUnusedLocals --noUnusedParameters && vite build",
+    "typecheck": "vue-tsc --noEmit --noUnusedLocals --noUnusedParameters",
+    "build": "npm run typecheck && vite build",
     "tauri": "node scripts/tauri.mjs",
     "desktop:dev": "node scripts/tauri.mjs dev",
     "desktop:build": "node scripts/tauri.mjs build --no-bundle",
