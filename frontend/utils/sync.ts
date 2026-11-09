@@ -38,6 +38,42 @@ export function sameSyncTarget(first: SyncTarget, second: SyncTarget) {
   }
 }
 
+const GITHUB_NAME = /^[A-Za-z0-9_.-]+$/;
+
+/**
+ * Owner, repo and optional branch from a repository address, such as
+ * `https://github.com/owner/repo`, `github.com/owner/repo.git` or
+ * `https://github.com/owner/repo/tree/main`. Null when it does not parse.
+ */
+export function parseGitHubRepo(
+  input: string,
+): { owner: string; repo: string; branch?: string } | null {
+  const text = input
+    .trim()
+    .replace(/^(https?:\/\/)?(www\.)?github\.com\//i, "")
+    .replace(/[?#].*$/, "")
+    .replace(/\/+$/, "");
+  const [owner, name, ...rest] = text.split("/").filter(Boolean);
+  if (!owner || !name) return null;
+  const repo = name.replace(/\.git$/i, "");
+  if (!GITHUB_NAME.test(owner) || !GITHUB_NAME.test(repo)) return null;
+  if (rest.length === 0) return { owner, repo };
+  if (rest[0] === "tree" && rest.length > 1)
+    return { owner, repo, branch: rest.slice(1).join("/") };
+  return null;
+}
+
+/** The address a saved GitHub target was set up from. */
+export function githubAddress(target: {
+  owner: string;
+  repo: string;
+  branch?: string;
+}) {
+  return `https://github.com/${target.owner}/${target.repo}${
+    target.branch ? `/tree/${target.branch}` : ""
+  }`;
+}
+
 export const syncKinds: Record<SyncKind, string> = {
   folder: "文件夹 / 网盘",
   webdav: "WebDAV",

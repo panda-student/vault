@@ -11,6 +11,8 @@ import type {
 import { message } from "../utils/errors";
 import {
   DEFAULT_SYNC_PATH,
+  githubAddress,
+  parseGitHubRepo,
   sameSyncTarget,
   syncKinds,
   syncSummary,
@@ -23,9 +25,7 @@ const draft = reactive({
   kind: "folder" as SyncKind,
   directory: "",
   url: "",
-  owner: "",
-  repo: "",
-  branch: "",
+  repoUrl: "",
   path: DEFAULT_SYNC_PATH,
   credential: "",
   create: false,
@@ -88,15 +88,18 @@ function target(): SyncTarget {
       path,
       credential: reference(),
     };
+  const repo = parseGitHubRepo(draft.repoUrl);
   return {
     kind: "github",
-    owner: draft.owner.trim(),
-    repo: draft.repo.trim(),
-    branch: draft.branch.trim() || undefined,
+    owner: repo?.owner ?? "",
+    repo: repo?.repo ?? "",
+    branch: repo?.branch,
     path,
     token: reference(),
   };
 }
+/** What the repository address reads as, shown under the field. */
+const parsedRepo = computed(() => parseGitHubRepo(draft.repoUrl));
 /** Same remote as the saved one: the saved passphrase may be kept. */
 const sameTarget = computed(
   () => !!status.value?.target && sameSyncTarget(status.value.target, target()),
@@ -124,9 +127,7 @@ async function openSetup() {
     kind: saved?.kind ?? "folder",
     directory: saved?.kind === "folder" ? saved.directory : "",
     url: saved?.kind === "webdav" ? saved.url : "",
-    owner: saved?.kind === "github" ? saved.owner : "",
-    repo: saved?.kind === "github" ? saved.repo : "",
-    branch: saved?.kind === "github" ? (saved.branch ?? "") : "",
+    repoUrl: saved?.kind === "github" ? githubAddress(saved) : "",
     path: saved?.path ?? DEFAULT_SYNC_PATH,
     credential: "",
     create: false,
@@ -165,8 +166,8 @@ function invalid(): string {
     return "请选择同步文件夹。";
   if (draft.kind === "webdav" && !draft.url.trim())
     return "请填写 WebDAV 地址。";
-  if (draft.kind === "github" && !(draft.owner.trim() && draft.repo.trim()))
-    return "请填写仓库所有者和仓库名。";
+  if (draft.kind === "github" && !parsedRepo.value)
+    return "请填写仓库地址，例如 https://github.com/所有者/仓库名。";
   if (draft.kind !== "folder" && !draft.credential)
     return "请选择库里保存账号或 Token 的凭据。";
   return "";
@@ -334,23 +335,20 @@ async function disable() {
           </div>
         </template>
         <template v-else>
-          <div class="sync-grid">
-            <div class="form-field">
-              <label for="sync-owner">仓库所有者</label>
-              <input id="sync-owner" v-model="draft.owner" />
-            </div>
-            <div class="form-field">
-              <label for="sync-repo">仓库名</label>
-              <input id="sync-repo" v-model="draft.repo" />
-            </div>
-          </div>
           <div class="form-field">
-            <label for="sync-branch">分支（可选）</label>
+            <label for="sync-repo-url">仓库地址</label>
             <input
-              id="sync-branch"
-              v-model="draft.branch"
-              placeholder="留空使用默认分支"
+              id="sync-repo-url"
+              v-model="draft.repoUrl"
+              placeholder="https://github.com/所有者/仓库名"
             />
+            <small class="sync-hint">
+              {{
+                parsedRepo
+                  ? `将使用 ${parsedRepo.owner}/${parsedRepo.repo}${parsedRepo.branch ? `，分支 ${parsedRepo.branch}` : "，默认分支"}`
+                  : "粘贴仓库链接即可，可以带 /tree/分支名 指定分支"
+              }}
+            </small>
           </div>
         </template>
         <div class="form-field">
