@@ -13,4 +13,3 @@ serde_json = "1"
 zeroize = "1"
 
 [dev-dependencies]
-tempfile = "3"

@@ -4616,7 +4616,6 @@ version = "0.6.7"
 dependencies = [
  "serde",
  "serde_json",
- "tempfile",
  "zeroize",
 ]
 
@@ -4647,7 +4646,6 @@ name = "vault-credentials"
 version = "0.6.7"
 dependencies = [
  "serde_json",
- "tempfile",
  "uuid",
  "vault-contracts",
  "zeroize",
@@ -4658,7 +4656,6 @@ name = "vault-filling"
 version = "0.6.7"
 dependencies = [
  "serde_json",
- "tempfile",
  "uuid",
  "vault-contracts",
  "zeroize",
@@ -4671,7 +4668,6 @@ dependencies = [
  "fs2",
  "rmcp",
  "serde_json",
- "tempfile",
  "tokio",
  "uuid",
  "vault-contracts",
@@ -4686,7 +4682,6 @@ dependencies = [
  "base64 0.22.1",
  "percent-encoding",
  "serde_json",
- "tempfile",
  "vault-contracts",
  "zeroize",
 ]
@@ -4717,7 +4712,6 @@ dependencies = [
  "aes-gcm",
  "getrandom 0.4.3",
  "rusqlite",
- "serde",
  "serde_json",
  "tempfile",
  "uuid",
@@ -4732,7 +4726,6 @@ version = "0.6.7"
 dependencies = [
  "base64 0.22.1",
  "reqwest 0.12.28",
- "serde",
  "serde_json",
  "sha2",
  "tempfile",
