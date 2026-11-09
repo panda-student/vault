@@ -11,7 +11,7 @@ concurrency:
   group: windows-${{ github.ref }}
   cancel-in-progress: false
 # Pull requests run only the fast checks. Pushes to main also build and publish.
-# Checks and build run in parallel.
+# Checks, verify and build run in parallel.
 jobs:
   checks:
     runs-on: windows-latest
@@ -42,6 +42,47 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: timing-checks-${{ github.sha }}
+          path: artifacts/preflight-*.json
+          retention-days: 7
+          if-no-files-found: ignore
+  verify:
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+          shared-key: verify
+          cache-on-failure: true
+      - name: Test build and integration checks
+        run: node scripts/preflight.mjs --ci --phase=verify
+      - name: Preserve failed verification diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vault-verify-failure-${{ github.sha }}
+          path: |
+            artifacts/preflight-*.json
+            artifacts/regression/**
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Upload timing report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: timing-verify-${{ github.sha }}
           path: artifacts/preflight-*.json
           retention-days: 7
           if-no-files-found: ignore
@@ -101,7 +142,7 @@ jobs:
           retention-days: 7
   publish:
     if: github.event_name == 'push'
-    needs: [checks, build]
+    needs: [checks, verify, build]
     runs-on: windows-latest
     timeout-minutes: 10
     permissions:

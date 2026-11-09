@@ -9,7 +9,7 @@ import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { cargo } from "./lib/cargo.mjs";
 import { sourceFingerprint } from "./lib/source-fingerprint.mjs";
-const PHASES = ["checks", "build"];
+const PHASES = ["checks", "verify", "build"];
 const ci = process.argv.includes("--ci");
 const phaseArg = process.argv.find((arg) => arg.startsWith("--phase="));
 const requested = phaseArg ? phaseArg.slice("--phase=".length) : null;
@@ -89,10 +89,12 @@ function checks() {
   run("Rust tests", cargo, ["test", "--workspace", "--locked"]);
   generateDependencyNotices();
 }
-function build() {
+// The test executable and the production one both end up at target/release and
+// embed different frontends, so CI builds them in separate jobs. Locally the
+// phases run in order and the production one overwrites the test build.
+function verify() {
   installDependencies();
-  // The test executable embeds the test frontend, so it is compiled before the
-  // production bundle replaces dist. The type check already ran in `checks`.
+  // The type check already ran in `checks`.
   run("Test-only release build", process.execPath, [
     "scripts/build-test.mjs",
     "--release",
@@ -102,6 +104,9 @@ function build() {
     node(name, `scripts/verify-${name}.mjs`, {
       VAULT_EXE: resolve("artifacts/test-build/vault.exe"),
     });
+}
+function build() {
+  installDependencies();
   run(
     "Frontend production bundle",
     process.execPath,
@@ -127,7 +132,7 @@ function build() {
     artifacts,
   ]);
 }
-const handlers = { checks, build };
+const handlers = { checks, verify, build };
 // Writes a per-phase timing report, and a table on the CI run summary page.
 function publish(current) {
   const seconds = (ms) => (ms / 1000).toFixed(1);
