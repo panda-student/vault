@@ -4584,7 +4584,7 @@ dependencies = [
 
 [[package]]
 name = "vault"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "fs2",
  "serde",
@@ -4601,7 +4601,7 @@ dependencies = [
 
 [[package]]
 name = "vault-common"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "serde",
  "serde_json",
@@ -4612,7 +4612,7 @@ dependencies = [
 
 [[package]]
 name = "vault-contracts"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "serde",
  "serde_json",
@@ -4622,7 +4622,7 @@ dependencies = [
 
 [[package]]
 name = "vault-core"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "rusqlite",
  "serde",
@@ -4636,13 +4636,15 @@ dependencies = [
  "vault-permissions",
  "vault-platform",
  "vault-storage",
+ "vault-sync",
  "vault-transfer",
  "vault-updater",
+ "zeroize",
 ]
 
 [[package]]
 name = "vault-credentials"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -4653,7 +4655,7 @@ dependencies = [
 
 [[package]]
 name = "vault-filling"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -4664,7 +4666,7 @@ dependencies = [
 
 [[package]]
 name = "vault-mcp"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "fs2",
  "rmcp",
@@ -4679,7 +4681,7 @@ dependencies = [
 
 [[package]]
 name = "vault-permissions"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "base64 0.22.1",
  "percent-encoding",
@@ -4691,7 +4693,7 @@ dependencies = [
 
 [[package]]
 name = "vault-platform"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "fs2",
  "reqwest 0.12.28",
@@ -4710,7 +4712,7 @@ dependencies = [
 
 [[package]]
 name = "vault-storage"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "aes-gcm",
  "getrandom 0.4.3",
@@ -4725,8 +4727,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "vault-sync"
+version = "0.6.7"
+dependencies = [
+ "base64 0.22.1",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "uuid",
+ "vault-contracts",
+ "zeroize",
+]
+
+[[package]]
 name = "vault-transfer"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -4739,7 +4756,7 @@ dependencies = [
 
 [[package]]
 name = "vault-updater"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",

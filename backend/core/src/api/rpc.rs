@@ -92,7 +92,19 @@ fn output(mut results: Vec<Value>, batch: bool) -> Value {
 
 fn arguments<T: serde::de::DeserializeOwned>(value: Value) -> Result<T> {
     serde_json::from_value(value)
-        .map_err(|error| AppError::invalid().with("arguments", &error.to_string()))
+        .map_err(|error| AppError::invalid().with("arguments", &describe(&error)))
+}
+
+/// serde names the offending field or type; quoted input values are cut so a
+/// rejected secret is never echoed back in the error.
+fn describe(error: &serde_json::Error) -> String {
+    let text = error.to_string();
+    match (text.find('"'), text.rfind('"')) {
+        (Some(start), Some(end)) if end > start => {
+            format!("{}\"…\"{}", &text[..start], &text[end + 1..])
+        }
+        _ => text,
+    }
 }
 
 pub(crate) fn dispatch(core: &CoreSession, name: &str, value: Value) -> Result<Value> {
@@ -179,11 +191,16 @@ pub(crate) fn dispatch(core: &CoreSession, name: &str, value: Value) -> Result<V
         }
         "credentials.readSecret" => {
             let args: SecretArgs = arguments(value)?;
+            let field = args.field.unwrap_or_else(|| "secret".into());
+            if !matches!(field.as_str(), "password" | "token" | "secret") {
+                return Err(AppError::invalid().with("field", "只能读取 password 或 token。"));
+            }
             core.execute(Operation::ReadField(FieldRequest {
                 id: args.id,
                 expected_revision: args.expected_revision,
-                field: "secret".into(),
+                field,
                 service_id: None,
+                group_id: args.group_id,
             }))
         }
         "clipboard.copyField" => core.execute(Operation::CopyField(arguments(value)?)),
@@ -210,10 +227,17 @@ pub(crate) fn dispatch(core: &CoreSession, name: &str, value: Value) -> Result<V
         "startup.set" => {
             let args: StartupArgs = arguments(value)?;
             core.execute(Operation::SetStartup {
-                executable: std::env::current_exe().map_err(|_| AppError::storage())?,
+                executable: crate::context::current_executable()?,
                 enabled: args.enabled,
             })
         }
+        "settings.mcpGet" => {
+            let _: EmptyArgs = arguments(value)?;
+            core.execute(Operation::McpSettings)
+        }
+        "settings.mcpUpdate" => core.execute(Operation::McpUpdateSettings(
+            crate::settings_mcp::parse_patch(value)?,
+        )),
         "transfer.export" => core.execute(Operation::Export(arguments(value)?)),
         "transfer.inspect" => core.execute(Operation::InspectExport(arguments(value)?)),
         "transfer.import" => core.execute(Operation::Import(arguments(value)?)),
@@ -223,6 +247,34 @@ pub(crate) fn dispatch(core: &CoreSession, name: &str, value: Value) -> Result<V
         }
         "transfer.respond" => core.execute(Operation::TransferRespond(arguments(value)?)),
         "transfer.mcpExport" => core.execute(Operation::McpExport(arguments(value)?)),
+        "sync.status" => {
+            let _: EmptyArgs = arguments(value)?;
+            core.execute(Operation::SyncStatus)
+        }
+        "sync.credentials" => {
+            let _: EmptyArgs = arguments(value)?;
+            core.execute(Operation::SyncCredentials)
+        }
+        "sync.configure" => core.execute(Operation::SyncConfigure(arguments(value)?)),
+        "sync.test" => core.execute(Operation::SyncTest(arguments(value)?)),
+        "sync.run" => {
+            let _: EmptyArgs = arguments(value)?;
+            core.execute(Operation::SyncRun)
+        }
+        "sync.resolve" => core.execute(Operation::SyncResolve(arguments(value)?)),
+        "sync.disable" => {
+            let _: EmptyArgs = arguments(value)?;
+            core.execute(Operation::SyncDisable)
+        }
+        "sync.pending" => {
+            let _: EmptyArgs = arguments(value)?;
+            core.execute(Operation::SyncPending)
+        }
+        "sync.respond" => core.execute(Operation::SyncRespond(arguments(value)?)),
+        "sync.mcpRun" => {
+            let _: EmptyArgs = arguments(value)?;
+            core.execute(Operation::McpSyncRun)
+        }
         "updates.status" => {
             let _: EmptyArgs = arguments(value)?;
             core.execute(Operation::UpdateStatus)

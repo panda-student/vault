@@ -12,7 +12,8 @@ impl Vault {
             .query_map([], from_sql)
             .map_err(crate::sql_error)?
         {
-            values.push(self.decode(&row.map_err(crate::sql_error)?)?.secret);
+            let value = self.decode(&row.map_err(crate::sql_error)?)?;
+            values.extend(value.secrets().cloned());
         }
         let mut history = connection
             .prepare("SELECT name,value FROM metadata WHERE name GLOB 'retired_secret:*'")

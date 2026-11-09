@@ -31,14 +31,14 @@ impl Vault {
             let row = row.map_err(crate::sql_error)?;
             let value = self.decode(&row)?;
             if kind.is_none_or(|k| k == value.kind)
-                && ([
-                    &value.title,
-                    &value.account,
-                    &value.url,
-                    &value.documentation_url,
-                ]
-                .iter()
-                .any(|s| s.to_lowercase().contains(&query))
+                && ([&value.title, &value.url, &value.documentation_url]
+                    .iter()
+                    .any(|s| s.to_lowercase().contains(&query))
+                    || value.groups.iter().any(|g| {
+                        [&g.account, &g.environment]
+                            .iter()
+                            .any(|s| s.to_lowercase().contains(&query))
+                    })
                     || value.tags.iter().any(|s| s.to_lowercase().contains(&query))
                     || value.database.as_ref().is_some_and(|db| {
                         [&db.host, &db.database_type, &db.database_name]
@@ -67,7 +67,7 @@ impl Vault {
         let value = self.decode(&row)?;
         Ok(EntryDetail {
             summary: row.summary(&value),
-            secret: value.secret,
+            groups: value.groups,
         })
     }
     pub fn create_many_checked(
@@ -108,15 +108,19 @@ impl Vault {
             }
             let value = self.decode(&row)?;
             let original = row.summary(&value);
-            let old_secret = Zeroizing::new(value.secret.clone());
+            let old_secrets: Vec<Zeroizing<String>> =
+                value.secrets().map(|s| Zeroizing::new(s.clone())).collect();
             let value = policy.patch(value, patch)?;
             policy.authorize(
                 &self.settings_on(connection)?,
                 Some(&original),
                 &row.summary(&value),
             )?;
-            if old_secret.as_str() != value.secret {
-                self.retain_protected_value(connection, &row.id, &old_secret)?;
+            // Replaced or removed secrets stay protected from MCP output.
+            for old in &old_secrets {
+                if !value.secrets().any(|s| s == old.as_str()) {
+                    self.retain_protected_value(connection, &row.id, old)?;
+                }
             }
             row.revision += 1;
             row.updated_at = now();
@@ -174,10 +178,7 @@ impl Vault {
                 params![item.id, now()],
             ).map_err(crate::sql_error)?;
             connection.execute("DELETE FROM entries WHERE id=?1", [&item.id]).map_err(crate::sql_error)?;
-            connection.execute(
-                "DELETE FROM metadata WHERE name=?1",
-                [format!("api_origin:{}", item.id)],
-            ).map_err(crate::sql_error)?;
+            crate::drop_api_origin(connection, &item.id)?;
             Ok(item.id)
         })
     }
@@ -193,5 +194,20 @@ impl Vault {
         self.save_settings_on(&tx, settings)?;
         tx.commit().map_err(crate::sql_error)?;
         Ok(())
+    }
+    /// Change only `close_to_tray` against the latest stored settings, so a
+    /// concurrent desktop save of permission rules is never overwritten.
+    /// Returns the previous value.
+    pub fn set_close_to_tray(&self, value: bool) -> Result<bool> {
+        let mut connection = self.connection()?;
+        let tx = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(crate::sql_error)?;
+        let mut settings = self.settings_on(&tx)?;
+        let previous = settings.close_to_tray;
+        settings.close_to_tray = value;
+        self.save_settings_on(&tx, &settings)?;
+        tx.commit().map_err(crate::sql_error)?;
+        Ok(previous)
     }
 }

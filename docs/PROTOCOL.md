@@ -22,7 +22,7 @@
 | --- | --- |
 | application.info | 当前版本、宿主 PID、目录、设置 |
 | credentials.list / search / get | 列表、检索、按 ID 读取 |
-| credentials.create / update / delete | 单条字段或 items；修改/删除必须提供 expectedRevision |
+| credentials.create / update / delete | 单条字段或 items；修改/删除必须提供 expectedRevision；凭据组通过 groups / removeGroups 修改 |
 | credentials.pin / readSecret | 置顶、人工显示原文（后者仅桌面） |
 | tags.list / organize | 标签目录、全局新增/重命名/删除 |
 | trash.list / restore / empty | 垃圾桶；empty 由核心弹出原生确认，仅桌面 |
@@ -33,11 +33,15 @@
 | filling.capture / write | 一次性目标捕获、本地窗口或文件填写 |
 | transfer.export / inspect / import / pending / respond | 桌面导入导出、文件预检与 MCP 导出确认；导入整批回滚 |
 | transfer.mcpExport | MCP 请求加密导出；桌面在线输入口令，只返回状态与数量 |
+| sync.status / credentials / configure / test / run / resolve / disable / pending / respond | 桌面远程同步：状态、可引用凭据、设置与测试、立即同步、冲突处理、停用、AI 设置请求的确认 |
+| sync.mcpRun | MCP 立即同步一次；返回不含冲突明细和凭据名的状态 |
 
-MCP 使用 SDK 原生 JSON-RPC 协议。12 个工具映射到相同业务分发器，不额外包装一层自定义 MCP 协议。`Caller` 永不从 JSON 解析，MCP 无法调用权限修改、原文读取、永久删除或更新操作。接口授权后才进入业务；事务内再次核对最新策略和对象版本。秘密原文只在本地填写路径中解析，MCP 出口仍过滤协议帧。
+MCP 使用 SDK 原生 JSON-RPC 协议。15 个工具映射到相同业务分发器，不额外包装一层自定义 MCP 协议。`Caller` 永不从 JSON 解析，MCP 无法调用权限修改、原文读取、永久删除或更新操作。接口授权后才进入业务；事务内再次核对最新策略和对象版本。秘密原文只在本地填写路径中解析，MCP 出口仍过滤协议帧。
 
 `export_entries` 通过 `transfer.mcpExport` 进入核心：核心向桌面会话登记待确认请求，用户在 Vue 弹窗输入口令后由桌面写出加密 JSON 到数据目录的 `exports`。口令、路径与文件内容均不经过 MCP 线路；工具结果只有 `status/count/format/encrypted`。等待上限 120 秒。
 
 `transfer.export`、`transfer.inspect`、`transfer.import`、`transfer.pending` 与 `transfer.respond` 仅桌面身份可调用。
+
+`update_settings.sync.target` 通过 `settings.mcpUpdate` 登记一个待确认的同步设置请求（与 MCP 导出共用同一套确认握手），桌面以 `sync.pending` 轮询、`sync.respond` 回答。确认之前核心不读取引用的凭据，也不连接远端；远端已有同步文件时口令必须能解开它，否则请求保持打开，用户可重填。等待上限 120 秒。除 `sync.mcpRun` 外的 `sync.*` 方法仅桌面身份可调用。同步的网络操作不持有执行门，只在读写本地库的步骤上获取，因此不会阻塞更新安装。
 
 Tauri 壳的 smoke_* / finish_smoke 是测试钩子，要求显式 --smoke-test 和隔离 --data-dir；不属于业务 JSON-RPC 或 MCP 工具。

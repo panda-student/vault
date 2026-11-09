@@ -11,6 +11,7 @@ import { useTags } from "./useTags";
 import { useSettings } from "./useSettings";
 import { useNavigation } from "./useNavigation";
 import { useTransfer } from "./useTransfer";
+import { useSync } from "./useSync";
 export function useVault() {
   const state = createVaultState();
   const dependencies: VaultDependencies = {
@@ -49,12 +50,14 @@ export function useVault() {
   const { hide, refresh, invalidateReveal } = credentials;
   const { stashDraft, loadEntry, reconcile } = draft;
   const transfer = useTransfer({ notify: dependencies.notify, refresh });
+  const sync = useSync({ notify: dependencies.notify, refresh });
   const updater = useUpdater(
     () =>
       !!((editing.value || creating.value) && dirty.value) ||
       drafts.size > 0 ||
       !!permissionDraft.value ||
       !!transfer.pendingExport.value ||
+      !!sync.pendingSync.value ||
       saving.value ||
       settingsSaving.value ||
       !!document.querySelector("dialog[open]:not(#update-dialog)"),
@@ -92,8 +95,21 @@ export function useVault() {
     { deep: true, flush: "sync" },
   );
 
+  /** Pick up settings the AI changed over MCP; permission drafts stay untouched. */
+  async function refreshSettings() {
+    if (!info.value || settingsSaving.value) return;
+    try {
+      const latest = await invoke<Info>("application.info");
+      if (!info.value || settingsSaving.value) return;
+      info.value.settings.closeToTray = latest.settings.closeToTray;
+      info.value.startupEnabled = latest.startupEnabled;
+    } catch {
+      /* The next tick retries; credential refresh reports backend errors. */
+    }
+  }
   function focus() {
     void refresh();
+    void refreshSettings();
   }
   function visibility() {
     if (document.visibilityState !== "visible") hide();
@@ -108,7 +124,10 @@ export function useVault() {
       } else {
         updater.start();
         timer = setInterval(() => {
-          if (document.visibilityState === "visible") void refresh();
+          if (document.visibilityState === "visible") {
+            void refresh();
+            void refreshSettings();
+          }
         }, 2000);
         window.addEventListener("focus", focus);
         window.addEventListener("blur", hide);
@@ -134,6 +153,7 @@ export function useVault() {
     ...settings,
     ...navigation,
     ...transfer,
+    ...sync,
     updater,
   };
 }

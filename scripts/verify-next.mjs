@@ -27,7 +27,7 @@ try{
  const launch=config.value.mcpServers?.vault;
  check('mcp-config-name-and-current-path',!config.failed&&launch&&await realpath(launch.command)===await realpath(executable)&&launch.args[0]==='--mcp'&&launch.args[1]==='--data-dir'&&await realpath(launch.args[2])===await realpath(data));
  const tools=(await client.listTools()).tools;
- check('twelve-tools-no-network-or-purge',tools.length===12&&!tools.some(t=>/execute_api|trash|purge/.test(t.name)));
+ check('twelve-default-tools-without-sync-settings-api-execution-or-purge',tools.length===12&&!tools.some(t=>/^(get_settings|update_settings|sync_now)$|execute_api|trash|purge/.test(t.name)));
  const created=await call('create_entries',{items:[
   {kind:'database',title:'MCP DB UVT',tags:['MCP System','UVT'],database:{databaseType:'Oracle',host:'db-next.invalid',port:'1521',databaseName:'ORCL'},secret},
   {kind:'database',title:'MCP DB Local',database:{databaseType:'Redis',host:'127.0.0.1',port:'6379',databaseName:'0'},secret:''},
@@ -61,8 +61,20 @@ try{
  // P1: 校验失败必须携带字段级 details，AI 才能定位字段自纠而不是盲试。
  const detailTarget=(await call('create_entries',{kind:'password',title:'Acceptance Restore',url:'https://acceptance.invalid',tags:['AcceptanceTag'],secret})).value;
  check('metadata-reports-known-site',(await call('get_entries',{id:detailTarget.id})).value.siteMissing===false);
- const mismatch=await call('update_entries',{id:detailTarget.id,expectedRevision:detailTarget.revision,url:'https://mismatch.invalid',services:[]});
+ const mismatch=await call('update_entries',{id:api.id,expectedRevision:api.revision,url:'https://mismatch.invalid',services:[{protocol:'openai',url:'https://one.invalid/v1'}]});
  check('invalid-input-details-name-field',mismatch.failed&&Array.isArray(mismatch.value.details)&&mismatch.value.details.some(d=>d.field==='services'&&typeof d.reason==='string'&&d.reason.length>0));
+ // One site holds several credential groups; filling picks a group by id.
+ const site=(await call('create_entries',{items:[{kind:'password',url:'https://groups.invalid',groups:[{environment:'生产',account:'prod',password:secret},{environment:'测试',account:'test',token:'FAKE_GROUP_TOKEN_ONLY'}]}]})).value.results[0];
+ const siteMeta=(await call('get_entries',{items:[{id:site.id}]})).value.results[0];
+ check('groups-metadata-without-secrets',siteMeta.name==='groups.invalid'&&siteMeta.groups.length===2&&siteMeta.groups[0].hasPassword&&siteMeta.groups[1].hasToken&&!JSON.stringify(siteMeta).includes('FAKE_GROUP_TOKEN_ONLY'));
+ const ambiguous=await call('write_credential',{credentialId:site.id,field:'token',target:{type:'file',path:join(root,'ambiguous.txt')}});
+ check('several-groups-require-group-id',ambiguous.failed&&ambiguous.value.code==='GROUP_REQUIRED');
+ const tokenPath=join(root,'group-token.txt');
+ const tokenWrite=await call('write_credential',{credentialId:site.id,groupId:siteMeta.groups[1].id,field:'token',target:{type:'file',path:tokenPath}});
+ check('group-token-written-locally',!tokenWrite.failed&&(await readFile(tokenPath,'utf8'))==='FAKE_GROUP_TOKEN_ONLY');
+ // Encoding slips a model commonly makes are repaired instead of rejected.
+ const slipped=await call('update_entries',{items:JSON.stringify([{id:site.id,expectedRevision:String(siteMeta.revision),title:null,groups:{id:siteMeta.groups[0].id,environment:'正式'}}])});
+ check('stringified-and-null-arguments-repaired',!slipped.failed);
  // P2: MCP 恢复垃圾桶条目（更新权限范围内），输出保持受控元数据（无备注、无密钥）。
  check('delete-for-restore-cycle',!(await call('delete_entries',{id:detailTarget.id,expectedRevision:detailTarget.revision})).failed);
  const restored=await call('restore_entries',{id:detailTarget.id,expectedRevision:detailTarget.revision});

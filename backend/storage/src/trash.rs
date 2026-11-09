@@ -83,11 +83,7 @@ impl Vault {
         }
         // Retired values use entry-owned keys in the current format.
         for (id, _) in &actual {
-            tx.execute(
-                "DELETE FROM metadata WHERE name GLOB ?1",
-                [format!("retired_secret:{id}:*")],
-            )
-            .map_err(crate::sql_error)?;
+            crate::drop_retired_secrets(&tx, id)?;
         }
         let count = tx
             .execute("DELETE FROM trash", [])

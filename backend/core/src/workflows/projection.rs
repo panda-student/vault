@@ -16,7 +16,8 @@ pub(crate) fn metadata(core: &CredentialService, guard: &SharedGuard, id: &str) 
             "id":summary.id,
             "kind":summary.kind,
             "title":summary.title,
-            "account":summary.account,
+            "name":summary.name,
+            "groups":summary.groups,
             "url":summary.url,
             "documentationUrl":summary.documentation_url,
             "services":summary.services,
@@ -62,13 +63,22 @@ pub(crate) fn search(
         // Searching redacted fields would become an oracle for secrets
         // accidentally placed in names, accounts or URLs.
         if query.is_empty()
-            || ["title", "account", "url", "documentationUrl"]
+            || ["name", "title", "url", "documentationUrl"]
                 .iter()
                 .any(|field| {
                     item[*field]
                         .as_str()
                         .is_some_and(|v| v.to_lowercase().contains(&query))
                 })
+            || item["groups"].as_array().is_some_and(|groups| {
+                groups.iter().any(|group| {
+                    ["account", "environment"].iter().any(|field| {
+                        group[*field]
+                            .as_str()
+                            .is_some_and(|v| v.to_lowercase().contains(&query))
+                    })
+                })
+            })
             || item["tags"].as_array().is_some_and(|tags| {
                 tags.iter().any(|t| {
                     t.as_str()

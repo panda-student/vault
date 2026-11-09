@@ -28,6 +28,7 @@ pub(crate) fn execute(
             &args.credential_id,
             &args.field,
             args.service_id.as_deref(),
+            args.group_id.as_deref(),
         )
     };
     match args.target {
@@ -126,15 +127,19 @@ pub fn resolve_field(
     id: &str,
     field: &str,
     service_id: Option<&str>,
+    group_id: Option<&str>,
 ) -> Result<String> {
     let entry = vault.get(id)?;
     Ok(match field {
-        "account" => entry.summary.account,
-        "secret" => entry.secret,
+        "account" | "environment" | "password" | "token" | "secret" => {
+            entry.group(group_id)?.field(field)?
+        }
         "url" => entry.summary.url,
         "service_url" => entry.summary.service(service_id)?.url.clone(),
         "host" | "port" | "database_name" | "database_type" => {
-            let db = entry.summary.database.ok_or_else(AppError::invalid)?;
+            let db = entry.summary.database.ok_or_else(|| {
+                AppError::invalid().with("field", "只有数据库凭据有连接信息字段。")
+            })?;
             match field {
                 "host" => db.host,
                 "port" => db.port,
@@ -142,6 +147,6 @@ pub fn resolve_field(
                 _ => db.database_type,
             }
         }
-        _ => return Err(AppError::invalid()),
+        _ => return Err(AppError::invalid().with("field", "不支持的字段。")),
     })
 }

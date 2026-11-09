@@ -46,12 +46,12 @@ fn persisted_bytes_never_contain_secret_and_tampering_is_rejected() {
     let directory = tempfile::tempdir().unwrap();
     let store = Vault::open(directory.path()).unwrap();
     let value = input();
-    let secret = value.secret.clone();
+    let secret = value.groups[0].password.clone();
     let entry = store
         .create_many_checked(vec![value], &policy(false))
         .unwrap()
         .remove(0);
-    assert_eq!(store.get(&entry.id).unwrap().secret, secret);
+    assert_eq!(store.get(&entry.id).unwrap().groups[0].password, secret);
     for file in std::fs::read_dir(directory.path()).unwrap() {
         let bytes = std::fs::read(file.unwrap().path()).unwrap();
         assert!(!bytes.windows(secret.len()).any(|v| v == secret.as_bytes()));
@@ -112,7 +112,7 @@ fn export_entries_reads_every_field_and_optional_trash() {
     assert!(
         everything
             .iter()
-            .all(|entry| entry.secret == removed.secret)
+            .all(|entry| entry.groups == removed.groups)
     );
 }
 
@@ -141,4 +141,63 @@ fn import_many_rolls_back_when_authorization_fails() {
         .unwrap_err();
     assert_eq!(error.code, "TEST_DENIED");
     assert!(store.list("", None).unwrap().is_empty());
+}
+#[test]
+fn sync_apply_skips_entries_changed_since_the_snapshot() {
+    use vault_contracts::sync::LocalChange;
+    let directory = tempfile::tempdir().unwrap();
+    let store = Vault::open(directory.path()).unwrap();
+    let created = store
+        .create_many_checked(vec![input(), input()], &policy(false))
+        .unwrap();
+    let snapshot = store.sync_snapshot().unwrap();
+    // Edited locally after the snapshot: the sync write must not overwrite it.
+    store
+        .pin(&created[0].id, created[0].revision, true)
+        .unwrap();
+    let changes = snapshot
+        .records
+        .iter()
+        .map(|record| {
+            let mut record = record.clone();
+            record.value.title = "from remote".into();
+            record.deleted_at = Some(1);
+            LocalChange::Upsert(record)
+        })
+        .collect();
+    let skipped = store.apply_sync(changes, &snapshot.slots).unwrap();
+    assert_eq!(skipped, [created[0].id.clone()]);
+    let live = store.list("", None).unwrap();
+    assert_eq!(live.len(), 1);
+    assert!(live[0].pinned);
+    let trash = store.list_trash().unwrap();
+    assert_eq!(trash[0].summary.title, "from remote");
+    assert_eq!(trash[0].summary.revision, created[1].revision + 1);
+
+    store
+        .apply_sync(
+            vec![LocalChange::Purge(created[1].id.clone())],
+            &store.sync_snapshot().unwrap().slots,
+        )
+        .unwrap();
+    assert!(store.list_trash().unwrap().is_empty());
+}
+#[test]
+fn sync_blobs_are_encrypted_and_removable() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Vault::open(directory.path()).unwrap();
+    store
+        .store_sync_blob("config", Some(b"PLAIN_SYNC_MARKER"))
+        .unwrap();
+    assert_eq!(
+        store.sync_blob("config").unwrap().unwrap().as_slice(),
+        b"PLAIN_SYNC_MARKER"
+    );
+    drop(store);
+    let raw = std::fs::read(directory.path().join("vault.db")).unwrap();
+    assert!(!raw.windows(17).any(|w| w == b"PLAIN_SYNC_MARKER"));
+    let store = Vault::open(directory.path()).unwrap();
+    store.store_sync_blob("config", None).unwrap();
+    assert!(store.sync_blob("config").unwrap().is_none());
+    assert_eq!(store.sync_blob("../x").unwrap_err().code, "INVALID_INPUT");
 }

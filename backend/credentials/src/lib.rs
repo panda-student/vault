@@ -1,7 +1,8 @@
 //! Credential use cases. Repository ports keep SQL and encryption out of this service.
-use std::path::Path;
+use std::{collections::BTreeMap, path::Path};
 use vault_contracts::credentials::EntryDetail;
 use vault_contracts::ports::repository::{ChangeAuthorizer, CredentialCatalog};
+use vault_contracts::sync::{LocalChange, SyncSlot, SyncSnapshot};
 use vault_contracts::{
     credentials::{EntryInput, EntryPatch, EntrySummary, EntryVersion, Kind, Settings},
     errors::{AppError, Result},
@@ -121,8 +122,27 @@ impl CredentialService {
     pub fn save_settings(&self, settings: &Settings) -> Result<()> {
         self.repository.save_settings(settings)
     }
+    pub fn set_close_to_tray(&self, value: bool) -> Result<bool> {
+        self.repository.set_close_to_tray(value)
+    }
     pub fn protected_values(&self) -> Result<Zeroizing<Vec<String>>> {
         self.repository.protected_values()
+    }
+    pub fn sync_snapshot(&self) -> Result<SyncSnapshot> {
+        self.repository.sync_snapshot()
+    }
+    pub fn apply_sync(
+        &self,
+        changes: Vec<LocalChange>,
+        expected: &BTreeMap<String, SyncSlot>,
+    ) -> Result<Vec<String>> {
+        self.repository.apply_sync(changes, expected)
+    }
+    pub fn sync_blob(&self, name: &str) -> Result<Option<Zeroizing<Vec<u8>>>> {
+        self.repository.sync_blob(name)
+    }
+    pub fn store_sync_blob(&self, name: &str, bytes: Option<&[u8]>) -> Result<()> {
+        self.repository.store_sync_blob(name, bytes)
     }
     /// Human desktop operations only. MCP exposes summary metadata and local writes.
     pub fn read_field(
@@ -131,17 +151,19 @@ impl CredentialService {
         revision: i64,
         field: &str,
         service: Option<&str>,
+        group: Option<&str>,
     ) -> Result<String> {
         let entry = self.repository.get(id)?;
         if entry.summary.revision != revision {
             return Err(AppError::conflict());
         }
         Ok(match field {
-            "account" => entry.summary.account,
             "url" if service.is_some() => entry.summary.service(service)?.url.clone(),
             "url" => entry.summary.url,
-            "secret" => entry.secret,
-            _ => return Err(AppError::invalid()),
+            "account" | "environment" | "password" | "token" | "secret" => {
+                entry.group(group)?.field(field)?
+            }
+            _ => return Err(AppError::invalid().with("field", "不支持的字段。")),
         })
     }
 }

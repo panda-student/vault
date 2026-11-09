@@ -1,3 +1,4 @@
+mod arguments;
 pub mod bridge;
 mod writer;
 use rmcp::{
@@ -34,6 +35,9 @@ fn execute(core: &CoreSession, name: &str, value: Value) -> Result<Value> {
         "write_credential" => "filling.write",
         "capture_fill_target" => "filling.capture",
         "export_entries" => "transfer.mcpExport",
+        "get_settings" => "settings.mcpGet",
+        "update_settings" => "settings.mcpUpdate",
+        "sync_now" => "sync.mcpRun",
         _ => return Err(AppError::new("UNKNOWN_TOOL", "该工具不存在。")),
     };
     core.invoke(method, value)
@@ -59,24 +63,47 @@ impl ServerHandler for VaultServer {
             ..Default::default()
         })
     }
+    /// Every outcome of a tool call, including an unknown tool name or malformed
+    /// arguments, is a tool result with `isError`, so the calling model sees the
+    /// reason and can correct itself. Protocol errors are what clients surface to
+    /// the user as pop-ups instead.
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
         _: RequestContext<RoleServer>,
     ) -> std::result::Result<CallToolResponse, ErrorData> {
-        if !tools().iter().any(|tool| tool.name == request.name) {
-            return Err(ErrorData::invalid_params("Unknown tool", None));
-        }
+        let Some(tool) = tools().into_iter().find(|tool| tool.name == request.name) else {
+            let names: Vec<String> = tools().iter().map(|t| t.name.to_string()).collect();
+            return Ok(CallToolResult::structured_error(json!({
+                "code": "UNKNOWN_TOOL",
+                "message": "该工具不存在。",
+                "details": [{"field": "name", "reason": format!("可用工具：{}", names.join(", "))}]
+            }))
+            .into());
+        };
         let core = self.core.clone();
         let name = request.name.to_string();
+        let schema = Value::Object((*tool.input_schema).clone());
         let value = Value::Object(request.arguments.unwrap_or_default());
         let outcome = tokio::task::spawn_blocking(move || {
+            let value = arguments::repair_arguments(&schema, value);
             core.protect_input(&value)?;
-            execute(&core, &name, value)
+            let mut result = execute(&core, &name, value).map_err(|error| json!(error));
+            // Redact before the result text is rendered, so a protected value can
+            // never turn the whole response into an invalid frame downstream. The
+            // guard is current: execute refreshed it. If it is unavailable the
+            // SafeWriter refuses the frame, so nothing unredacted leaves.
+            if let Ok(guard) = core.output_guard().read() {
+                match &mut result {
+                    Ok(value) | Err(value) => guard.scrub(value),
+                }
+            }
+            Ok::<_, AppError>(result)
         })
         .await;
         let result = match outcome {
-            Ok(Ok(value)) => CallToolResult::structured(value),
+            Ok(Ok(Ok(value))) => CallToolResult::structured(value),
+            Ok(Ok(Err(error))) => CallToolResult::structured_error(error),
             Ok(Err(error)) => CallToolResult::structured_error(json!(error)),
             Err(_) => CallToolResult::structured_error(
                 json!({"code":"INTERNAL_ERROR","message":"Local operation failed"}),

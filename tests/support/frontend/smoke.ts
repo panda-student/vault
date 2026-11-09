@@ -77,12 +77,12 @@ export async function runSmoke() {
     await click('[data-tag="Smoke System"]');
     await click("#add-btn");
     await select("#f-kind", "database");
-    await input("#f-title", "Smoke Oracle UVT");
+    check("no-name-field-for-sites", !document.querySelector("#f-title"));
     await input("#f-db-type", "Oracle");
     await input("#f-db-host", "db-smoke.invalid");
     await input("#f-db-port", "1521");
     await input("#f-db-name", "ORCLPDB1");
-    await input("#f-account", "smoke_user");
+    await input("#f-account-0", "smoke_user");
     await input("#f-tags", "UVT");
     el("#f-tags").dispatchEvent(
       new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
@@ -93,9 +93,12 @@ export async function runSmoke() {
     await until(
       () =>
         !document.querySelector(".draft-state") &&
-        el("#detail-title").textContent === "Smoke Oracle UVT",
+        el("#detail-title").textContent!.trim() ===
+          "ORCLPDB1 @ db-smoke.invalid",
     );
-    let db = (await entries()).find((e) => e.title === "Smoke Oracle UVT")!;
+    let db = (await entries()).find(
+      (e) => e.database?.databaseName === "ORCLPDB1",
+    )!;
     check(
       "database-saved-empty-password",
       !!db &&
@@ -104,7 +107,7 @@ export async function runSmoke() {
         db.tags.includes("UVT"),
     );
     await click("#duplicate-entry");
-    await input("#f-title", "Smoke Oracle Test");
+    await input("#f-db-name", "ORCLTEST");
     await click('[aria-label="移除标签 UVT"]');
     await input("#f-tags", "测试");
     el("#f-tags").dispatchEvent(
@@ -114,7 +117,8 @@ export async function runSmoke() {
     await click("#save-entry");
     await until(
       () =>
-        el("#detail-title").textContent === "Smoke Oracle Test" &&
+        el("#detail-title").textContent!.trim() ===
+          "ORCLTEST @ db-smoke.invalid" &&
         !document.querySelector(".draft-state"),
     );
     check(
@@ -170,61 +174,62 @@ export async function runSmoke() {
     await click('[data-nav="entries"]');
     await click("#add-btn");
     await select("#f-kind", "password");
-    await input("#f-title", "Smoke Website");
-    await input("#f-account", "first-user");
-    await input("#f-url", "https://website-smoke.invalid");
-    await input("#f-secret", "FAKE_SMOKE_ONLY_123");
+    await input("#f-account-0", "first-user");
+    await input("#f-url", "https://www.website-smoke.invalid/login");
+    await input("#f-password-0", "FAKE_SMOKE_ONLY_123");
     await click("#save-entry");
     await until(
       () =>
-        el("#detail-title").textContent === "Smoke Website" &&
+        el("#detail-title").textContent!.trim() === "website-smoke.invalid" &&
         !document.querySelector(".draft-state"),
     );
-    await click("#same-site");
-    check(
-      "same-site-clears-identity",
-      el<HTMLInputElement>("#f-account").value === "" &&
-        el<HTMLInputElement>("#f-secret").value === "" &&
-        el<HTMLInputElement>("#f-url").value ===
-          "https://website-smoke.invalid",
-    );
-    await input("#f-title", "Smoke Second Account");
-    await input("#f-account", "second-user");
-    await input("#f-secret", "FAKE_SECOND_ONLY_123");
-    await click("#save-entry");
-    await until(
-      () =>
-        el("#detail-title").textContent === "Smoke Second Account" &&
-        !document.querySelector(".draft-state"),
-    );
-    const second = (await entries()).find(
-      (e) => e.title === "Smoke Second Account",
+    const site = (await entries()).find(
+      (e) => e.url === "https://www.website-smoke.invalid/login",
     )!;
     const clipboardCheck = await testInvoke<boolean | null>("smoke_clipboard", {
-      id: second.id,
+      id: site.id,
     });
     check(
       "core-windows-clipboard-roundtrip",
       clipboardCheck === true || clipboardCheck === null,
     );
+    await click("#add-group");
+    await input("#f-environment-1", "测试");
+    await input("#f-account-1", "second-user");
+    await input("#f-token-1", "FAKE_SECOND_TOKEN_123");
+    await click("#save-entry");
+    await until(() => !document.querySelector(".draft-state"));
+    const second = (await entries()).find((e) => e.id === site.id)!;
+    check(
+      "one-site-holds-several-groups",
+      second.groups.length === 2 &&
+        second.groups[0].hasPassword &&
+        !second.groups[0].hasToken &&
+        second.groups[1].environment === "测试" &&
+        second.groups[1].hasToken &&
+        el(`[data-entry="${site.id}"]`).textContent!.includes(
+          "second-user（测试）",
+        ),
+    );
     await click('[data-nav="entries"]');
-    await input("#f-title", "Unsaved draft");
+    await click(`[data-entry="${second.id}"] .entry-select`);
+    await input("#f-notes", "Unsaved draft");
     await click(`[data-entry="${db.id}"] .entry-select`);
     await click(`[data-entry="${second.id}"] .entry-select`);
     check(
       "draft-survives-navigation",
-      el<HTMLInputElement>("#f-title").value === "Unsaved draft",
+      el<HTMLTextAreaElement>("#f-notes").value === "Unsaved draft",
     );
     await click("#cancel-edit");
     check(
-      "revert-loads-saved-name",
-      el<HTMLInputElement>("#f-title").value === "Smoke Second Account",
+      "revert-loads-saved-fields",
+      el<HTMLTextAreaElement>("#f-notes").value === "",
     );
     await input("#f-notes", "local draft");
     await invoke("credentials.update", {
       id: second.id,
       expectedRevision: second.revision,
-      title: "Concurrent name",
+      documentationUrl: "https://concurrent.invalid",
     });
     await click('[data-nav="settings"]');
     check(
@@ -262,8 +267,7 @@ export async function runSmoke() {
     await click("#cancel-edit");
     await click("#add-btn");
     await select("#f-kind", "api");
-    await input("#f-title", "Smoke API");
-    await input("#f-secret", "FAKE_API_ONLY_123");
+    await input("#f-token-0", "FAKE_API_ONLY_123");
     await input("#f-url", "https://api-smoke.invalid/v1");
     await click("#add-service");
     await select("#f-protocol-1", "anthropic");
@@ -291,12 +295,12 @@ export async function runSmoke() {
     await click("#save-entry");
     await until(
       () =>
-        el("#detail-title").textContent === "Smoke API" &&
+        el("#detail-title").textContent!.trim() === "api-smoke.invalid" &&
         !document.querySelector(".draft-state"),
     );
     check(
       "api-multiple-services",
-      (await entries()).find((e) => e.title === "Smoke API")?.services
+      (await entries()).find((e) => e.name === "api-smoke.invalid")?.services
         .length === 2,
     );
     await click("#delete-btn");

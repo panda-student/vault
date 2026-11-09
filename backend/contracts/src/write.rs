@@ -5,6 +5,8 @@ use std::path::PathBuf;
 pub struct WriteArgs {
     pub credential_id: String,
     pub service_id: Option<String>,
+    /// Required when the entry has more than one credential group.
+    pub group_id: Option<String>,
     pub field: String,
     pub target: Destination,
 }

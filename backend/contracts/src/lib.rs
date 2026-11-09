@@ -8,5 +8,7 @@ pub mod organization;
 pub mod permissions;
 pub mod ports;
 pub mod rpc;
+pub mod settings;
+pub mod sync;
 pub mod updates;
 pub mod write;

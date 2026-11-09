@@ -47,6 +47,22 @@ pub trait VaultRepository: CredentialReader + Send + Sync {
     fn empty_trash(&self, expected: Vec<EntryVersion>) -> Result<usize>;
     fn settings(&self) -> Result<Settings>;
     fn save_settings(&self, settings: &Settings) -> Result<()>;
+    /// Atomically change only `close_to_tray`; returns the previous value.
+    fn set_close_to_tray(&self, value: bool) -> Result<bool>;
+    /// Every entry, live and trashed, with secrets, for the sync file.
+    fn sync_snapshot(&self) -> Result<crate::sync::SyncSnapshot>;
+    /// Apply merged changes in one transaction. A change whose entry no longer
+    /// matches `expected` (edited, moved or created since) is skipped; the
+    /// skipped ids are returned.
+    fn apply_sync(
+        &self,
+        changes: Vec<crate::sync::LocalChange>,
+        expected: &std::collections::BTreeMap<String, crate::sync::SyncSlot>,
+    ) -> Result<Vec<String>>;
+    /// Encrypted private state of the sync feature (config, base, status).
+    fn sync_blob(&self, name: &str) -> Result<Option<Zeroizing<Vec<u8>>>>;
+    /// `None` removes the blob.
+    fn store_sync_blob(&self, name: &str, bytes: Option<&[u8]>) -> Result<()>;
     fn protected_values(&self) -> Result<Zeroizing<Vec<String>>>;
 }
 

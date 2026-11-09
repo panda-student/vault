@@ -4,6 +4,7 @@ import type { UnwrapRef } from "vue";
 import { invoke } from "../api/desktop";
 import type { VaultUI } from "../composables/useVault";
 import type { Settings, PermissionKey } from "../types/models";
+import { entryName } from "../utils/display";
 export function usePermissions(v: UnwrapRef<VaultUI>) {
   const props = { v };
 
@@ -121,7 +122,10 @@ export function usePermissions(v: UnwrapRef<VaultUI>) {
         (e) =>
           !q ||
           tag.toLowerCase().includes(q) ||
-          [e.title, e.account, ...e.tags].join(" ").toLowerCase().includes(q),
+          [entryName(e), ...e.groups.map((g) => g.account), ...e.tags]
+            .join(" ")
+            .toLowerCase()
+            .includes(q),
       );
       if (q && !match.length && !tag.toLowerCase().includes(q)) continue;
       result.push({
@@ -137,14 +141,18 @@ export function usePermissions(v: UnwrapRef<VaultUI>) {
             kind: "entry",
             id: e.id,
             parent: tag,
-            title: e.title,
+            title: entryName(e),
             note: e.tags.join(" · "),
           });
     }
     const untagged = props.v.entries.filter(
       (e) =>
         !e.tags.length &&
-        (!q || [e.title, e.account].join(" ").toLowerCase().includes(q)),
+        (!q ||
+          [entryName(e), ...e.groups.map((g) => g.account)]
+            .join(" ")
+            .toLowerCase()
+            .includes(q)),
     );
     if (untagged.length) {
       result.push({
@@ -159,7 +167,7 @@ export function usePermissions(v: UnwrapRef<VaultUI>) {
           kind: "entry",
           id: e.id,
           parent: "untagged",
-          title: e.title,
+          title: entryName(e),
           note: "继承默认规则",
         });
     }

@@ -494,3 +494,31 @@ footer,
 .muted {
   color: #687387;
 }
+.group-card {
+  margin-top: 8px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+}
+.group-heading strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4a556b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group-card .form-field {
+  margin: 0;
+}

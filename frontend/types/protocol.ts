@@ -34,7 +34,16 @@ export type RpcMethod =
   | "transfer.import"
   | "transfer.pending"
   | "transfer.respond"
-  | "transfer.mcpExport";
+  | "transfer.mcpExport"
+  | "sync.status"
+  | "sync.credentials"
+  | "sync.configure"
+  | "sync.test"
+  | "sync.run"
+  | "sync.resolve"
+  | "sync.disable"
+  | "sync.pending"
+  | "sync.respond";
 export interface ApiError {
   code: string;
   message: string;

@@ -1,12 +1,35 @@
 //! Redacts protected values and their common encodings. No protocol or core dependency.
 use base64::Engine;
 use serde_json::Value;
-use std::sync::{Arc, RwLock};
+use std::{
+    borrow::Borrow,
+    collections::HashSet,
+    hash::{Hash, Hasher},
+    sync::{Arc, RwLock},
+};
 use vault_contracts::errors::{AppError, Result};
 use zeroize::Zeroizing;
+/// A protected value; zeroized on drop and hashed by its text.
+struct Protected(Zeroizing<String>);
+impl PartialEq for Protected {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_str() == other.0.as_str()
+    }
+}
+impl Eq for Protected {}
+impl Hash for Protected {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.as_str().hash(state)
+    }
+}
+impl Borrow<str> for Protected {
+    fn borrow(&self) -> &str {
+        self.0.as_str()
+    }
+}
 #[derive(Default)]
 pub struct OutputGuard {
-    values: Vec<Zeroizing<String>>,
+    values: HashSet<Protected>,
 }
 pub type SharedGuard = Arc<RwLock<OutputGuard>>;
 impl OutputGuard {
@@ -26,15 +49,15 @@ impl OutputGuard {
                 .to_string(),
             escaped.to_owned(),
         ] {
-            if !item.is_empty() && !self.values.iter().any(|existing| existing.as_str() == item) {
-                self.values.push(Zeroizing::new(item));
+            if !item.is_empty() && !self.values.contains(item.as_str()) {
+                self.values.insert(Protected(Zeroizing::new(item)));
             }
         }
     }
     fn contains(&self, text: &str) -> bool {
         self.values
             .iter()
-            .any(|value| text.contains(value.as_str()))
+            .any(|value| text.contains(value.0.as_str()))
     }
     pub fn scrub(&self, value: &mut Value) {
         match value {

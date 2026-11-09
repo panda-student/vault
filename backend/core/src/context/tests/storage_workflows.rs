@@ -41,6 +41,7 @@ fn obsolete_group_protocol_and_api_url_inputs_are_rejected() {
     let vault = Vault::open(dir.path()).unwrap();
     let mut input = value();
     input.services.clear();
+    input.url.clear();
     assert!(vault.create(input).is_err());
     assert!(
         serde_json::from_str::<Settings>(r#"{"mcpEnabled":true,"closeToTray":false}"#).is_err()
@@ -65,7 +66,7 @@ fn multiple_service_addresses_roundtrip_without_losing_secret() {
     drop(vault);
     let vault = Vault::open(dir.path()).unwrap();
     let current = vault.get(&entry.id).unwrap();
-    assert_eq!(current.secret, value().secret);
+    assert_eq!(current.groups[0].token, value().groups[0].token);
     assert_eq!(current.summary.services[1].id, second_id);
     assert_eq!(
         current.summary.services[0].url,
@@ -105,8 +106,13 @@ fn invalid_service_sets_do_not_commit_partial_batch() {
     ];
     assert!(vault.create_many(vec![value(), duplicate]).is_err());
     assert!(vault.list("", None).unwrap().is_empty());
+    // Password entries may list API addresses for their tokens; databases may not.
     let mut wrong_kind = value();
-    wrong_kind.kind = Kind::Password;
+    wrong_kind.kind = Kind::Database;
+    wrong_kind.database = Some(DatabaseFields {
+        database_type: "MySQL".into(),
+        ..Default::default()
+    });
     wrong_kind.services = vec![ApiService {
         id: "one".into(),
         protocol: ApiProtocol::Custom,
@@ -119,7 +125,7 @@ fn batch_writes_roll_back_and_remain_compatible_with_single_operations() {
     let dir = tempfile::tempdir().unwrap();
     let vault = Vault::open(dir.path()).unwrap();
     let mut bad = value();
-    bad.secret.clear();
+    bad.groups.clear();
     assert!(vault.create_many(vec![value(), bad]).is_err());
     assert!(vault.list("", None).unwrap().is_empty());
     let entries = vault.create_many(vec![value(), value()]).unwrap();
@@ -134,7 +140,10 @@ fn batch_writes_roll_back_and_remain_compatible_with_single_operations() {
         "CONFLICT"
     );
     assert_eq!(vault.get(&entries[0].id).unwrap().summary.revision, 1);
-    assert_eq!(vault.get(&entries[0].id).unwrap().secret, value().secret);
+    assert_eq!(
+        vault.get(&entries[0].id).unwrap().groups[0].token,
+        value().groups[0].token
+    );
     assert!(
         !vault
             .protected_values()
@@ -206,7 +215,7 @@ fn rotated_values_remain_encrypted() {
             .protected_values()
             .unwrap()
             .iter()
-            .any(|v| v == &value().secret)
+            .any(|v| v == &value().groups[0].token)
     );
     vault.delete(&e.id, 2).unwrap();
     drop(vault);
@@ -225,7 +234,7 @@ fn value() -> EntryInput {
         database: None,
         kind: Kind::Api,
         title: "fixture-private-title".into(),
-        account: "fixture-account".into(),
+
         url: "https://fixture.example.com".into(),
         documentation_url: String::new(),
         services: vec![ApiService {
@@ -233,7 +242,11 @@ fn value() -> EntryInput {
             protocol: ApiProtocol::Custom,
             url: "https://fixture.example.com".into(),
         }],
-        secret: "fixture-secret-DO-NOT-LEAK".into(),
+        groups: vec![CredentialGroup {
+            account: "fixture-account".into(),
+            token: "fixture-secret-DO-NOT-LEAK".into(),
+            ..Default::default()
+        }],
         notes: "fixture-private-notes".into(),
     }
 }
@@ -247,7 +260,10 @@ fn encrypted_roundtrip_conflicts_and_restart() {
             .unwrap()
             .contains("DO-NOT-LEAK")
     );
-    assert_eq!(vault.get(&created.id).unwrap().secret, value().secret);
+    assert_eq!(
+        vault.get(&created.id).unwrap().groups[0].token,
+        value().groups[0].token
+    );
     let pinned = vault.pin(&created.id, 1, true).unwrap();
     assert_eq!(
         vault.pin(&created.id, 1, false).unwrap_err().code,
@@ -289,7 +305,13 @@ fn no_plaintext_in_database_or_wal() {
     vault.create(e.clone()).unwrap();
     for file in std::fs::read_dir(dir.path()).unwrap() {
         let bytes = std::fs::read(file.unwrap().path()).unwrap();
-        for secret in [&e.title, &e.secret, &e.account, &e.url, &e.notes] {
+        for secret in [
+            &e.title,
+            &e.groups[0].token,
+            &e.groups[0].account,
+            &e.url,
+            &e.notes,
+        ] {
             assert!(!bytes.windows(secret.len()).any(|w| w == secret.as_bytes()));
         }
     }
@@ -315,7 +337,10 @@ fn partial_update_preserves_secret_and_rejects_blank() {
     )
     .unwrap();
     vault.update(patch).unwrap();
-    assert_eq!(vault.get(&e.id).unwrap().secret, value().secret);
+    assert_eq!(
+        vault.get(&e.id).unwrap().groups[0].token,
+        value().groups[0].token
+    );
     let patch: EntryPatch =
         serde_json::from_value(serde_json::json!({"id":e.id,"expectedRevision":2,"secret":""}))
             .unwrap();
@@ -370,7 +395,7 @@ mod tags {
                 .tags
                 .contains(&"empty-tag".into())
         );
-        assert_eq!(reopened.get(&a.id).unwrap().secret, "");
+        assert_eq!(reopened.get(&a.id).unwrap().groups[0].password, "");
         let bytes = std::fs::read(dir.path().join("vault.db")).unwrap();
         assert!(
             !bytes
@@ -426,7 +451,10 @@ mod trash {
         assert_eq!(trash[0].summary.notes, "retained note");
         let restored = vault.restore(&entry.id, entry.revision).unwrap();
         assert!(restored.revision > entry.revision);
-        assert_eq!(vault.get(&entry.id).unwrap().secret, "trash-fixture-secret");
+        assert_eq!(
+            vault.get(&entry.id).unwrap().groups[0].password,
+            "trash-fixture-secret"
+        );
         assert!(vault.delete(&entry.id, entry.revision).is_err());
         assert!(vault.list_trash().unwrap().is_empty());
     }

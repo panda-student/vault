@@ -1,428 +1,453 @@
 //! MCP descriptions and schemas. Execution stays in the adapter and shared API.
+//!
+//! Schemas stay inside the JSON Schema subset every mainstream MCP client and model
+//! API accepts: a root `type: object`, plain `properties` / `required` / `enum` /
+//! `items`, and no `oneOf` / `anyOf` / `allOf` / `const` / `default`. Clients that
+//! cannot translate richer constructs silently drop them, and the model then
+//! guesses the shape, which is what used to produce invalid-parameter errors.
 use rmcp::model::{Tool, ToolAnnotations};
 use serde_json::{Value, json};
 use std::sync::Arc;
-/// Tools whose input schema is rewritten to the batch-only form.
-const BATCH_TOOLS: [&str; 5] = [
-    "search_entries",
-    "get_entries",
-    "create_entries",
-    "update_entries",
-    "delete_entries",
-];
-pub(super) fn tools() -> Vec<Tool> {
-    let property = |name: &str| {
-        json!({
-            "type": "string",
-            "description": name
-        })
-    };
-    let mut fields = json!({
-        "kind": {
-            "type": "string",
-            "enum": [
-                "password",
-                "api",
-                "database",
-                "generic"
-            ]
-        },
-        "title": property("Entry name"),
-        "account": property("Account or environment, optional"),
-        "url": property("Website URL; required for kind=password, optional for generic. For kind=api it is derived from the first service address."),
-        "secret": property("Password, API key or token"),
-        "notes": property("Notes, optional")
-    });
-    fields["documentationUrl"] =
-        property("Documentation website URL, optional and separate from API request URLs");
-    fields["services"] = json!({
-        "type": "array",
-        "maxItems": 20,
-        "description": "Service addresses sharing this credential's token; required with at least one address for kind=api (url is derived from the first address).",
-        "items": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "string",
-                    "description": "Keep existing service id on updates; omit for new addresses"
-                },
-                "protocol": {
-                    "type": "string",
-                    "description": "openai/anthropic/gemini for vendor-specific APIs; custom for a standard HTTP/HTTPS endpoint.",
-                    "enum": [
-                        "openai",
-                        "anthropic",
-                        "gemini",
-                        "custom"
-                    ]
-                },
-                "url": {
-                    "type": "string"
-                }
-            },
-            "required": [
-                "protocol",
-                "url"
-            ],
-            "additionalProperties": false
-        }
-    });
-    fields["tags"] = json!({
-        "type": "array",
-        "maxItems": 64,
-        "items": {
-            "type": "string"
-        }
-    });
-    fields["database"] = json!({
+
+fn text(description: &str) -> Value {
+    json!({"type": "string", "description": description})
+}
+
+fn object(properties: Value, required: &[&str]) -> Value {
+    json!({
         "type": "object",
-        "properties": {
-            "databaseType": {
-                "type": "string"
-            },
-            "host": {
-                "type": "string"
-            },
-            "port": {
-                "type": "string"
-            },
-            "databaseName": {
-                "type": "string"
-            }
-        },
-        "required": [
-            "databaseType"
-        ],
+        "properties": properties,
+        "required": required,
         "additionalProperties": false
-    });
-    let create=Tool::new("create_entries","Create a password or API credential. A password requires url (its website); an API credential requires at least one services address. Returns only id, revision and status; never echoes stored fields or secrets.",json!({
-    "type": "object",
-    "properties": fields,
-    "required": [
-        "kind",
-        "title",
-        "secret"
-    ],
-    "additionalProperties": false
-}).as_object().unwrap().clone()).with_annotations(ToolAnnotations::new().read_only(false).destructive(false).open_world(false));
-    fields.as_object_mut().unwrap().remove("kind");
-    fields["id"] = property("Entry ID from search_entries");
-    fields["expectedRevision"] = json!({
+    })
+}
+
+/// Remote sync settings. One flat target shape with `kind` instead of a union,
+/// so every client keeps the constraints.
+fn sync_patch() -> Value {
+    let credential = |description: &str| {
+        let mut reference = object(
+            json!({
+                "credentialId": text("Id of a vault entry from search_entries; its secret is used locally and never returned"),
+                "groupId": text("groups[].id; required when the entry has more than one credential group")
+            }),
+            &["credentialId"],
+        );
+        reference["description"] = json!(description);
+        reference
+    };
+    let mut sync = object(
+        json!({
+            "enabled": {"type": "boolean", "description": "false stops syncing (nothing is deleted locally or remotely); pass it alone"},
+            "target": object(
+                json!({
+                    "kind": {
+                        "type": "string",
+                        "enum": ["folder", "webdav", "github"],
+                        "description": "folder = a local or cloud-drive folder; webdav = a WebDAV server; github = a private GitHub repository"
+                    },
+                    "directory": text("kind=folder: absolute folder path"),
+                    "url": text("kind=webdav: https base URL of the WebDAV folder, without credentials"),
+                    "credential": credential("kind=webdav: entry whose group holds the account and password"),
+                    "owner": text("kind=github: user or organization that owns the repository"),
+                    "repo": text("kind=github: repository name; it must be private"),
+                    "branch": text("kind=github: branch; the repository's default branch when omitted"),
+                    "token": credential("kind=github: entry whose group holds a token with contents read/write (and administration to create the repository)"),
+                    "path": text("File path inside the target; vault/vault-sync.vaultsync when omitted. Only this one file is ever read or written")
+                }),
+                &["kind"],
+            ),
+            "create": {"type": "boolean", "description": "Create the missing folder, WebDAV collection or private GitHub repository"},
+            "intervalMinutes": {"type": "integer", "minimum": 0, "maximum": 1440, "description": "Minutes between automatic syncs; 0 = only after edits and on demand"},
+            "deviceName": {"type": "string", "maxLength": 64, "description": "Name of this computer, shown when resolving conflicts"}
+        }),
+        &[],
+    );
+    sync["description"] = json!(
+        "Remote sync. Pass target to set or change where the encrypted sync file lives (the desktop user confirms and types the passphrase); pass only intervalMinutes/deviceName to adjust; pass enabled=false to stop."
+    );
+    sync
+}
+
+/// Batch tools take `items` only; one entry is simply a one-item list.
+fn batch(item: Value) -> Value {
+    object(
+        json!({
+            "items": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 100,
+                "description": "1-100 items; applied atomically and answered in input order.",
+                "items": item
+            }
+        }),
+        &["items"],
+    )
+}
+
+fn revision() -> Value {
+    json!({
         "type": "integer",
         "minimum": 1,
-        "description": "Current revision; stale revisions are rejected"
+        "description": "Current revision from search_entries/get_entries; stale revisions are rejected"
+    })
+}
+
+fn kind() -> Value {
+    json!({
+        "type": "string",
+        "enum": ["password", "api", "database", "generic"],
+        "description": "password = website login; api = API service whose address is in services; database = database connection; generic = anything else"
+    })
+}
+
+fn group(update: bool) -> Value {
+    let mut properties = json!({
+        "environment": text("Optional environment label, e.g. production or test"),
+        "account": text("Username, email or account id; optional"),
+        "password": text("Login password; optional"),
+        "token": text("API key or access token; optional")
     });
-    let mut result = vec![
-        Tool::new("get_mcp_config","Get this running program's stdio MCP connection configuration, using its actual executable and current vault directory. Returns launch paths only, never credentials or other clients' configuration.",json!({
-    "type": "object",
-    "properties": {
-    },
-    "additionalProperties": false
-}).as_object().unwrap().clone()).with_annotations(ToolAnnotations::new().read_only(true).destructive(false).open_world(false)),
-        Tool::new("search_entries","Search controlled non-sensitive metadata. Never returns notes or protected values. API keys and tokens both use kind=api. siteMissing=true means the site is unknown: ask the user, never guess.",json!({
-    "type": "object",
-    "properties": {
-        "query": {
-            "type": "string"
-        },
-        "tag": {
-            "type": "string"
-        },
-        "kind": {
-            "type": "string",
-            "enum": [
-                "password",
-                "api",
-                "database",
-                "generic"
-            ]
-        }
-    },
-    "additionalProperties": false
-}).as_object().unwrap().clone()).with_annotations(ToolAnnotations::new().read_only(true).open_world(false)),
-        Tool::new("get_entries","Read controlled non-sensitive metadata only. Never returns a secret or notes. Use write_credential to use the credential locally. siteMissing=true means the site is unknown: ask the user, never guess.",json!({
-    "type": "object",
-    "properties": {
-        "id": {
-            "type": "string"
-        }
-    },
-    "required": [
-        "id"
-    ],
-    "additionalProperties": false
-}).as_object().unwrap().clone()).with_annotations(ToolAnnotations::new().read_only(true).open_world(false)),create,
-        Tool::new("update_entries","Update specified fields only. Read current revision first. Omitted fields including secret remain unchanged. No deletion or category changes. An entry with siteMissing=true must receive url (password) or services (API) in the same update, or the update is rejected.",json!({
-    "type": "object",
-    "properties": fields,
-    "required": [
-        "id",
-        "expectedRevision"
-    ],
-    "additionalProperties": false
-}).as_object().unwrap().clone()).with_annotations(ToolAnnotations::new().read_only(false).destructive(false).open_world(false)),
-        Tool::new("delete_entries","Move credentials to trash by ID and expectedRevision. Atomic logical deletion only. Deleted entries cannot be searched, read or used. Restore from trash is available via restore_entries; permanent deletion is never available to MCP. Returns IDs only.",json!({
-    "type": "object",
-    "properties": {
-        "id": {
-            "type": "string"
-        },
-        "expectedRevision": {
-            "type": "integer",
-            "minimum": 1
-        }
-    },
-    "required": [
-        "id",
-        "expectedRevision"
-    ],
-    "additionalProperties": false
-}).as_object().unwrap().clone()).with_annotations(ToolAnnotations::new().read_only(false).destructive(true).open_world(false)),
-        Tool::new("restore_entries","Restore one credential from trash by ID and expectedRevision. Requires update permission for the entry's tags. Returns controlled metadata only, never secrets or notes.",json!({
-    "type": "object",
-    "properties": {
-        "id": {
-            "type": "string"
-        },
-        "expectedRevision": {
-            "type": "integer",
-            "minimum": 1
-        }
-    },
-    "required": [
-        "id",
-        "expectedRevision"
-    ],
-    "additionalProperties": false
-}).as_object().unwrap().clone()).with_annotations(ToolAnnotations::new().read_only(false).destructive(false).open_world(false)),
-        Tool::new("pin_entries","Pin or unpin one credential by ID and expectedRevision. Returns controlled metadata only, never secrets or notes.",json!({
-    "type": "object",
-    "properties": {
-        "id": {
-            "type": "string"
-        },
-        "expectedRevision": {
-            "type": "integer",
-            "minimum": 1
-        },
-        "pinned": {
-            "type": "boolean"
-        }
-    },
-    "required": [
-        "id",
-        "expectedRevision",
-        "pinned"
-    ],
-    "additionalProperties": false
-}).as_object().unwrap().clone()).with_annotations(ToolAnnotations::new().read_only(false).destructive(false).open_world(false)),
-        Tool::new("organize","Rename or delete one tag globally across entries, trash and the tag's MCP permission rules. kind must be tag. Pass previous to rename it to name; pass previous with an empty name to delete it. Requires default update permission plus update permission on every affected entry; rejected when the change would grant MCP more permissions than before.",json!({
-    "type": "object",
-    "properties": {
-        "kind": {
-            "type": "string",
-            "enum": [
-                "tag"
-            ]
-        },
-        "name": {
-            "type": "string",
-            "description": "New tag name; empty string with previous set deletes the tag"
-        },
-        "previous": {
-            "type": "string",
-            "description": "Existing tag to rename or delete"
-        }
-    },
-    "required": [
-        "kind",
-        "name"
-    ],
-    "additionalProperties": false
-}).as_object().unwrap().clone()).with_annotations(ToolAnnotations::new().read_only(false).destructive(true).open_world(false)),
-        Tool::new("write_credential", "Use a stored credential locally without returning plaintext. Unified destinations: input uses a captured targetId; file uses an absolute path, creates a UTF-8 file by default, optionally a template with exactly one {{credential}} marker. mode=replace replaces exactly one placeholder in an existing UTF-8 file and preserves surrounding content; it never overwrites a whole existing file. No app/directory allowlist. Does not open or navigate apps. Acquire a target with capture_fill_target first; use its windowTitle+fieldName+expectedPassword options for browser inputs, then write. input_sent means keyboard events sent only; file_written means the file was written. Never read the resulting sensitive file through this tool.", json!({
-    "type": "object",
-    "properties": {
-        "credentialId": {
-            "type": "string"
-        },
-        "field": {
-            "type": "string",
-            "enum": [
-                "account",
-                "secret",
-                "url",
-                "service_url",
-                "host",
-                "port",
-                "database_name",
-                "database_type"
-            ]
-        },
-        "serviceId": {
-            "type": "string"
-        },
-        "target": {
-            "oneOf": [
-                {
-                    "type": "object",
-                    "properties": {
-                        "type": {
-                            "const": "input"
-                        },
-                        "targetId": {
-                            "type": "string"
-                        }
-                    },
-                    "required": [
-                        "type",
-                        "targetId"
-                    ],
-                    "additionalProperties": false
+    let description = if update {
+        properties["id"] =
+            text("groups[].id from get_entries to change that group; omit it to add a new group");
+        "One credential group. With id, only the fields you pass change; without id, a new group is added."
+    } else {
+        "One credential group: an environment's account with a password and/or token."
+    };
+    let mut schema = object(properties, &[]);
+    schema["description"] = json!(description);
+    schema
+}
+
+fn entry_fields() -> Value {
+    json!({
+        "title": text("Optional name, shown only for entries without a website; entries are listed by their website host"),
+        "url": text("Website address; required for kind=password. For kind=api it mirrors the first services address."),
+        "services": {
+            "type": "array",
+            "maxItems": 20,
+            "description": "API addresses used with the tokens; required (at least one) for kind=api, optional for password/generic.",
+            "items": object(json!({
+                "id": text("Existing service id to keep on updates; omit for new addresses"),
+                "protocol": {
+                    "type": "string",
+                    "enum": ["openai", "anthropic", "gemini", "custom"],
+                    "description": "openai/anthropic/gemini for vendor-specific APIs; custom for any other HTTP(S) endpoint"
                 },
-                {
-                    "type": "object",
-                    "properties": {
-                        "type": {
-                            "const": "file"
-                        },
-                        "path": {
-                            "type": "string",
-                            "description": "Absolute destination file path"
-                        },
-                        "mode": {
-                            "type": "string",
-                            "enum": [
-                                "create",
-                                "replace"
-                            ],
-                            "default": "create"
-                        },
-                        "template": {
-                            "type": "string",
-                            "description": "For create only; default {{credential}}"
-                        },
-                        "placeholder": {
-                            "type": "string",
-                            "description": "Exactly one occurrence required; default {{credential}}"
-                        }
-                    },
-                    "required": [
-                        "type",
-                        "path"
-                    ],
-                    "additionalProperties": false
-                }
-            ]
-        }
-    },
-    "required": [
-        "credentialId",
-        "field",
-        "target"
-    ],
-    "additionalProperties": false
-}).as_object().unwrap().clone()).with_annotations(ToolAnnotations::new().read_only(false).destructive(true).open_world(false)),
-        Tool::new("export_entries","Export an encrypted vault file through the desktop app. The desktop user reviews the request and types the passphrase; this tool never receives the passphrase, target path, plaintext or ciphertext, and returns status plus entry count only. Encryption is always applied. Requires write_file permission and an open desktop window; ask again later if the user does not respond within two minutes.",json!({
-    "type": "object",
-    "properties": {
-        "includeTrash": {
-            "type": "boolean",
-            "default": false
-        }
-    },
-    "additionalProperties": false
-}).as_object().unwrap().clone()).with_annotations(ToolAnnotations::new().read_only(false).destructive(false).open_world(false)),
-        Tool::new("capture_fill_target","Capture a Windows input target. For Edge/Chrome specify windowTitle (literal substring), fieldName (exact accessible label) and expectedPassword=true for passwords. The unique named editable control is focused locally; ambiguous, readonly or mismatched targets are rejected. Optional processId narrows the window. Empty arguments capture the current native caret; DOM focus alone is insufficient. No field values are read. Returns a one-use reference valid for 30 seconds.",json!({
-    "type": "object",
-    "properties": {
-        "windowTitle": {
-            "type": "string",
-            "maxLength": 512
+                "url": text("Base URL")
+            }), &["protocol", "url"])
         },
-        "processId": {
-            "type": "integer",
-            "minimum": 1
-        },
-        "fieldName": {
-            "type": "string",
-            "maxLength": 256
-        },
-        "expectedPassword": {
-            "type": "boolean"
-        }
-    },
-    "additionalProperties": false
-}).as_object().unwrap().clone()),
-    ];
-    for tool in &mut result {
-        if BATCH_TOOLS.contains(&tool.name.as_ref()) {
-            let single = Value::Object((*tool.input_schema).clone());
-            // Claude Code drops MCP tools whose input schema has a top-level
-            // combinator (oneOf/anyOf/allOf): it treats them as requiring
-            // normalization, and normalization is gated per server URL, which
-            // a stdio server never has. Batch already covers a single call, so
-            // declare only the batch form; the runtime `one_or_many` parser in
-            // rpc.rs still accepts a single object for compatibility.
-            tool.input_schema = Arc::new(
-                json!({
-                    "type": "object",
-                    "properties": {
-                        "items": {
-                            "type": "array",
-                            "minItems": 1,
-                            "maxItems": 100,
-                            "description": "1-100 objects, each with the tool's single-entry fields.",
-                            "items": single
-                        }
-                    },
-                    "required": [
-                        "items"
-                    ],
-                    "additionalProperties": false
-                })
+        "documentationUrl": text("Documentation website, optional and separate from API addresses"),
+        "tags": {"type": "array", "maxItems": 64, "items": {"type": "string"}},
+        "notes": text("Notes, optional"),
+        "database": object(json!({
+            "databaseType": text("e.g. MySQL, PostgreSQL, Redis"),
+            "host": text("Host name or address"),
+            "port": text("Port number as text, e.g. 3306"),
+            "databaseName": text("Database name, service name or file path")
+        }), &["databaseType"])
+    })
+}
+
+fn create_item() -> Value {
+    let mut properties = entry_fields();
+    properties["kind"] = kind();
+    properties["database"]["description"] = json!("Only for kind=database");
+    properties["groups"] = json!({
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 50,
+        "description": "Credential groups of this site, e.g. one per environment. kind=password and kind=api need at least one group with a password or token.",
+        "items": group(false)
+    });
+    object(properties, &["kind", "groups"])
+}
+
+fn update_item() -> Value {
+    let mut properties = entry_fields();
+    properties["id"] = text("Entry id from search_entries");
+    properties["expectedRevision"] = revision();
+    properties["groups"] = json!({
+        "type": "array",
+        "maxItems": 50,
+        "description": "Groups to change (with id) or add (without id). Groups you do not list stay unchanged.",
+        "items": group(true)
+    });
+    properties["removeGroups"] = json!({
+        "type": "array",
+        "maxItems": 50,
+        "description": "groups[].id values to delete from this entry",
+        "items": {"type": "string"}
+    });
+    object(properties, &["id", "expectedRevision"])
+}
+
+fn version_item() -> Value {
+    object(
+        json!({"id": text("Entry id"), "expectedRevision": revision()}),
+        &["id", "expectedRevision"],
+    )
+}
+
+fn tool(name: &'static str, description: &'static str, schema: Value) -> Tool {
+    Tool::new(
+        name,
+        description,
+        Arc::new(
+            schema
                 .as_object()
-                .unwrap()
+                .expect("tool schemas are objects")
                 .clone(),
-            );
-            tool.description = Some(format!("Batch-first: pass items with 1-100 objects. Batch responses have results in input order; batch writes are atomic; duplicate update/delete IDs are rejected. {}", tool.description.as_deref().unwrap_or("")).into());
-        }
-    }
-    result
+        ),
+    )
+}
+
+fn annotate(tool: Tool, read_only: bool, destructive: bool) -> Tool {
+    let annotations = ToolAnnotations::new()
+        .read_only(read_only)
+        .destructive(destructive)
+        .open_world(false);
+    tool.with_annotations(annotations)
+}
+
+pub(super) fn tools() -> Vec<Tool> {
+    vec![
+        annotate(
+            tool(
+                "get_mcp_config",
+                "Get this running program's stdio MCP connection configuration, using its actual executable and current vault directory. Returns launch paths only, never credentials or other clients' configuration.",
+                object(json!({}), &[]),
+            ),
+            true,
+            false,
+        ),
+        annotate(
+            tool(
+                "search_entries",
+                "Search controlled non-sensitive metadata. Never returns notes, passwords or tokens. Each entry has a display name (its website host, else its title) and lists its credential groups (id, environment, account, hasPassword, hasToken). siteMissing=true means the site is unknown: ask the user, never guess.",
+                batch(object(
+                    json!({
+                        "query": text("Matches title, website, API addresses, tags, database fields, accounts and environments; empty lists everything"),
+                        "tag": text("Only entries with exactly this tag"),
+                        "kind": kind()
+                    }),
+                    &[],
+                )),
+            ),
+            true,
+            false,
+        ),
+        annotate(
+            tool(
+                "get_entries",
+                "Read controlled non-sensitive metadata of entries by id, including credential groups (id, environment, account, hasPassword, hasToken). Never returns notes, passwords or tokens; use write_credential to use them locally. siteMissing=true means the site is unknown: ask the user, never guess.",
+                batch(object(
+                    json!({"id": text("Entry id from search_entries")}),
+                    &["id"],
+                )),
+            ),
+            true,
+            false,
+        ),
+        annotate(
+            tool(
+                "create_entries",
+                "Create entries. One entry is one website or service and can hold several credential groups (e.g. production and test accounts), each with a password and/or token. Returns only id, revision and status; never echoes stored fields or secrets.",
+                batch(create_item()),
+            ),
+            false,
+            false,
+        ),
+        annotate(
+            tool(
+                "update_entries",
+                "Update entries. Only the fields you pass change; omitted passwords and tokens are kept. Change a group by its id, add one without an id, delete groups with removeGroups. The kind cannot change. An entry with siteMissing=true must receive url (password) or services (api) in the same update.",
+                batch(update_item()),
+            ),
+            false,
+            false,
+        ),
+        annotate(
+            tool(
+                "delete_entries",
+                "Move entries to trash by id and expectedRevision. Deleted entries cannot be searched, read or used until restore_entries; permanent deletion is never available to MCP. Returns ids only.",
+                batch(version_item()),
+            ),
+            false,
+            true,
+        ),
+        annotate(
+            tool(
+                "restore_entries",
+                "Restore one entry from trash by id and expectedRevision. Requires update permission for the entry's tags. Returns controlled metadata only, never secrets or notes.",
+                version_item(),
+            ),
+            false,
+            false,
+        ),
+        annotate(
+            tool(
+                "pin_entries",
+                "Pin or unpin one entry by id and expectedRevision. Returns controlled metadata only, never secrets or notes.",
+                object(
+                    json!({
+                        "id": text("Entry id"),
+                        "expectedRevision": revision(),
+                        "pinned": {"type": "boolean"}
+                    }),
+                    &["id", "expectedRevision", "pinned"],
+                ),
+            ),
+            false,
+            false,
+        ),
+        annotate(
+            tool(
+                "organize",
+                "Rename or delete one tag globally across entries, trash and the tag's MCP permission rules. Pass previous to rename it to name; pass previous with an empty name to delete it. Requires default update permission plus update permission on every affected entry; rejected when the change would grant MCP more permissions than before.",
+                object(
+                    json!({
+                        "kind": {"type": "string", "enum": ["tag"], "description": "Always tag"},
+                        "name": text("New tag name; empty string with previous set deletes the tag"),
+                        "previous": text("Existing tag to rename or delete")
+                    }),
+                    &["kind", "name"],
+                ),
+            ),
+            false,
+            true,
+        ),
+        annotate(
+            tool(
+                "write_credential",
+                "Use a stored value locally without returning plaintext. target.type=input fills a field captured with capture_fill_target (needs targetId). target.type=file writes to an absolute path: mode=create (default) makes a new UTF-8 file, optionally from a template with exactly one {{credential}} marker; mode=replace replaces exactly one placeholder in an existing UTF-8 file and keeps the rest. It never overwrites a whole existing file, opens apps or navigates. input_sent means keyboard events were sent; file_written means the file was written. Never read the resulting sensitive file.",
+                object(
+                    json!({
+                        "credentialId": text("Entry id"),
+                        "field": {
+                            "type": "string",
+                            "enum": ["password", "token", "account", "environment", "secret", "url", "service_url", "host", "port", "database_name", "database_type"],
+                            "description": "password/token/account/environment come from one credential group; secret means the password, or the token when the group has none"
+                        },
+                        "groupId": text("groups[].id; required when the entry has more than one credential group"),
+                        "serviceId": text("services[].id for field=service_url when the entry has several addresses"),
+                        "target": object(json!({
+                            "type": {"type": "string", "enum": ["input", "file"]},
+                            "targetId": text("For type=input: id returned by capture_fill_target"),
+                            "path": text("For type=file: absolute destination path"),
+                            "mode": {"type": "string", "enum": ["create", "replace"], "description": "For type=file; create when omitted"},
+                            "template": text("For type=file with mode=create; default {{credential}}"),
+                            "placeholder": text("For type=file: marker that must occur exactly once; default {{credential}}")
+                        }), &["type"])
+                    }),
+                    &["credentialId", "field", "target"],
+                ),
+            ),
+            false,
+            true,
+        ),
+        annotate(
+            tool(
+                "export_entries",
+                "Export an encrypted vault file through the desktop app. The desktop user reviews the request and types the passphrase; this tool never receives the passphrase, target path, plaintext or ciphertext, and returns status plus entry count only. Encryption is always applied. Requires write_file permission and an open desktop window; ask again later if the user does not respond within two minutes.",
+                object(
+                    json!({
+                        "includeTrash": {"type": "boolean", "description": "Also export trashed entries; false when omitted"}
+                    }),
+                    &[],
+                ),
+            ),
+            false,
+            false,
+        ),
+        annotate(
+            tool(
+                "get_settings",
+                "Read this program's settings: closeToTray, startupEnabled, the MCP permission defaults, tag rules and entry rules, version, data directory and `sync` (remote sync status: target, interval, device name, last result and error, number of conflicts waiting; never the passphrase or token). `writable` lists the fields update_settings can change; permission rules are read-only and only the desktop user can change them. Requires the settings permission.",
+                object(json!({}), &[]),
+            ),
+            true,
+            false,
+        ),
+        annotate(
+            tool(
+                "update_settings",
+                "Change non-permission settings. Pass only the fields to change; at least one. Applied all-or-nothing and returns the updated settings like get_settings. Change `sync` on its own, not together with other fields. Setting or changing sync.target waits up to two minutes while the desktop user reviews the location and types the sync passphrase; the desktop app must be open. Interval and device name change without asking. Permission rules cannot be changed here (SETTINGS_READ_ONLY): ask the user to change them on the desktop. Requires the settings permission.",
+                object(
+                    json!({
+                        "closeToTray": {"type": "boolean", "description": "Keep running in the system tray when the window is closed"},
+                        "startupEnabled": {"type": "boolean", "description": "Start the program when the user signs in to Windows"},
+                        "sync": sync_patch()
+                    }),
+                    &[],
+                ),
+            ),
+            false,
+            false,
+        ),
+        annotate(
+            tool(
+                "sync_now",
+                "Run one remote sync now and return the sync status like get_settings.sync. Entries changed on both sides are left for the desktop user to settle; the result only counts them. Requires the settings permission and a configured sync target.",
+                object(json!({}), &[]),
+            ),
+            false,
+            false,
+        ),
+        tool(
+            "capture_fill_target",
+            "Capture a Windows input target. For Edge/Chrome pass windowTitle (literal substring), fieldName (exact accessible label) and expectedPassword=true for password fields. The unique named editable control is focused locally; ambiguous, readonly or mismatched targets are rejected. Optional processId narrows the window. Empty arguments capture the current native caret; DOM focus alone is insufficient. No field values are read. Returns a one-use reference valid for 30 seconds.",
+            object(
+                json!({
+                    "windowTitle": {"type": "string", "maxLength": 512},
+                    "processId": {"type": "integer", "minimum": 1},
+                    "fieldName": {"type": "string", "maxLength": 256},
+                    "expectedPassword": {"type": "boolean"}
+                }),
+                &[],
+            ),
+        ),
+    ]
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{BATCH_TOOLS, tools};
-    use serde_json::Value;
+    use super::*;
 
-    fn schema(name: &str) -> Value {
-        let tool = tools()
-            .into_iter()
-            .find(|tool| tool.name == name)
-            .expect("tool exists");
-        Value::Object((*tool.input_schema).clone())
+    fn walk(value: &Value, path: &str, found: &mut Vec<String>) {
+        match value {
+            Value::Object(map) => {
+                for (key, item) in map {
+                    if ["oneOf", "anyOf", "allOf", "const", "default", "$ref"]
+                        .contains(&key.as_str())
+                    {
+                        found.push(format!("{path}/{key}"));
+                    }
+                    walk(item, &format!("{path}/{key}"), found);
+                }
+            }
+            Value::Array(items) => items.iter().for_each(|item| walk(item, path, found)),
+            _ => {}
+        }
     }
 
+    // 工具参数只能使用所有主流客户端都支持的 JSON Schema 子集，否则客户端会丢弃约束，
+    // 模型只能猜格式，这正是“参数错误”的来源。
     #[test]
-    fn no_tool_has_a_top_level_combinator() {
-        // Claude Code skips MCP tools whose input schema uses a root-level
-        // oneOf/anyOf/allOf, because it only normalizes them for URL servers.
-        // Every tool must therefore have a plain object root.
+    fn schemas_stay_in_the_portable_subset() {
         for tool in tools() {
             let schema = Value::Object((*tool.input_schema).clone());
-            assert_eq!(
-                schema.get("type").and_then(Value::as_str),
-                Some("object"),
-                "{} must have an object root",
-                tool.name
-            );
-            for combinator in ["oneOf", "anyOf", "allOf"] {
+            assert_eq!(schema["type"], "object", "{}", tool.name);
+            let mut found = Vec::new();
+            walk(&schema, &tool.name, &mut found);
+            assert!(found.is_empty(), "unsupported keywords: {found:?}");
+            let properties = schema["properties"].as_object().unwrap();
+            for required in schema["required"].as_array().into_iter().flatten() {
                 assert!(
-                    schema.get(combinator).is_none(),
-                    "{} has a top-level {}; Claude Code would drop it",
-                    tool.name,
-                    combinator
+                    properties.contains_key(required.as_str().unwrap()),
+                    "{}",
+                    tool.name
                 );
             }
         }
@@ -430,28 +455,23 @@ mod tests {
 
     #[test]
     fn batch_tools_declare_only_items() {
-        for name in BATCH_TOOLS {
-            let schema = schema(name);
-            let properties = schema["properties"]
-                .as_object()
-                .expect("properties must be an object");
-            assert_eq!(
-                properties.len(),
-                1,
-                "{} must only declare the batch form",
-                name
-            );
-            assert_eq!(
-                schema["required"],
-                serde_json::json!(["items"]),
-                "{} must require items",
-                name
-            );
+        let catalog = tools();
+        for name in [
+            "search_entries",
+            "get_entries",
+            "create_entries",
+            "update_entries",
+            "delete_entries",
+        ] {
+            let tool = catalog.iter().find(|tool| tool.name == name).unwrap();
+            let schema = &tool.input_schema;
+            assert_eq!(schema["properties"].as_object().unwrap().len(), 1, "{name}");
+            assert_eq!(schema["required"], json!(["items"]), "{name}");
             let items = &schema["properties"]["items"];
-            assert_eq!(items["type"], "array", "{} items type", name);
-            assert_eq!(items["minItems"], 1, "{} minItems", name);
-            assert_eq!(items["maxItems"], 100, "{} maxItems", name);
-            assert_eq!(items["items"]["type"], "object", "{} item type", name);
+            assert_eq!(items["type"], "array", "{name}");
+            assert_eq!(items["minItems"], 1, "{name}");
+            assert_eq!(items["maxItems"], 100, "{name}");
+            assert_eq!(items["items"]["type"], "object", "{name}");
         }
     }
 }

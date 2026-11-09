@@ -191,6 +191,16 @@ const {
       生效顺序：单条设置 → 标签规则 →
       默认规则。多标签冲突时禁止优先。修改标签规则不会清除单条例外。
     </p>
+    <label class="permission-global-option">
+      <input
+        id="permission-settings"
+        type="checkbox"
+        v-model="draft.mcpPermissions.settings"
+      /><span
+        ><strong>允许 AI 读写软件设置</strong>
+        可读取全部设置（含权限规则），可修改关闭到托盘、开机启动；不能修改权限。仅受此开关控制，不按标签或单条设置。</span
+      >
+    </label>
     <p class="permission-boundary">
       <strong>始终禁止 MCP：</strong
       >读取密码原文、修改权限、永久删除。“读取信息”仅指受控元数据。
@@ -401,6 +411,24 @@ const {
 }
 .rule-order {
   margin: 13px 0 20px;
+}
+.permission-global-option {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #5d6880;
+  margin: 0 0 16px;
+  cursor: pointer;
+}
+.permission-global-option input {
+  margin-top: 3px;
+}
+.permission-global-option strong {
+  font-weight: 500;
+  margin-right: 6px;
+  color: #2f3a52;
 }
 .permission-boundary {
   font-size: 10px;

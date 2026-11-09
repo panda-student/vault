@@ -96,6 +96,7 @@ fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let runtime = bootstrap::UpdateRuntime::acquire(&executable)?;
     let core = bootstrap::open(&directory, false)?;
     core.bind_update_runtime(runtime)?;
+    core.start_sync_worker()?;
     super::runtime::desktop(
         AppState {
             core,

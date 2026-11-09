@@ -38,8 +38,9 @@ try{
  const registrations=(await readdir(join(base,'bridges'))).map(name=>join(base,'bridges',name,'paused'));
  const ack=async()=>Promise.all(registrations.map(p=>readFile(p,'utf8').catch(()=>'')));
  check('pause-does-not-acknowledge-in-flight-write',(await ack()).some(v=>v!==token));
- let rejected=false;try{await b.callTool({name:'create_entries',arguments:{kind:'password',title:'must not replay',url:'https://example.invalid',secret:'FAKE_REJECTED_WRITE_5664'}});}catch(e){rejected=String(e).includes('UPDATE_IN_PROGRESS');}
- check('new-write-is-explicitly-rejected-during-pause',rejected);
+ // A paused write comes back to the AI as an isError tool result, never as a protocol error the client would pop up.
+ let rejected=false;try{const r=await b.callTool({name:'create_entries',arguments:{kind:'password',title:'must not replay',url:'https://example.invalid',secret:'FAKE_REJECTED_WRITE_5664'}});rejected=r.isError===true&&JSON.stringify(r.content).includes('UPDATE_IN_PROGRESS');}catch{rejected=false;}
+ check('new-write-is-rejected-to-the-ai-during-pause',rejected);
  const committed=await running;check('accepted-write-completes-before-pause',!!committed.id);
  const end=Date.now()+12000;while(Date.now()<end){const files=await readdir(join(base,'bridges'));const values=await Promise.all(files.map(p=>readFile(join(base,'bridges',p,'paused'),'utf8').catch(()=>'')));if(values.length>=2&&values.every(v=>v===token))break;await pause(75);}
  // Bridge acknowledgement precedes the host's idle tick. Observe the actual

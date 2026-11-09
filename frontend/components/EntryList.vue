@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { UnwrapRef } from "vue";
 import type { VaultUI } from "../composables/useVault";
-import { kindName, missingSite } from "../utils/display";
+import { accountsLine, entryName, missingSite } from "../utils/display";
 const props = defineProps<{ v: UnwrapRef<VaultUI> }>();
 defineEmits<{ organize: [kind: "tag", previous?: string] }>();
 </script>
@@ -62,8 +62,8 @@ defineEmits<{ organize: [kind: "tag", previous?: string] }>();
                 : "人"
           }}</span
           ><span class="entry-text"
-            ><strong>{{ entry.title }}</strong
-            ><small>{{ entry.account || kindName(entry.kind) }}</small
+            ><strong>{{ entryName(entry) }}</strong
+            ><small>{{ accountsLine(entry) }}</small
             ><small>{{
               entry.database?.host
                 ? `${entry.database.host}${entry.database.port ? ":" + entry.database.port : ""}`
@@ -82,7 +82,7 @@ defineEmits<{ organize: [kind: "tag", previous?: string] }>();
           class="pin"
           :class="{ pinned: entry.pinned }"
           :data-pin="entry.id"
-          :aria-label="`${entry.pinned ? '取消置顶' : '置顶'} ${entry.title}`"
+          :aria-label="`${entry.pinned ? '取消置顶' : '置顶'} ${entryName(entry)}`"
           :aria-pressed="entry.pinned"
           @click="v.pin(entry)"
         >

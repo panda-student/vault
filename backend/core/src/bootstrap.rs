@@ -11,6 +11,7 @@ pub fn open(
     crate::context::assemble(
         std::sync::Arc::new(vault_storage::Vault::open(directory)?),
         std::sync::Arc::new(vault_platform::windows::WindowsService::default()),
+        std::sync::Arc::new(vault_sync::Stores),
         mcp_mode,
     )
 }

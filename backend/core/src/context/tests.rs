@@ -312,6 +312,7 @@ fn field(id: &str, revision: i64) -> Operation {
         id: id.into(),
         expected_revision: revision,
         field: "secret".into(),
+        group_id: None,
         service_id: None,
     })
 }
@@ -466,11 +467,27 @@ fn validation_errors_carry_field_details_for_self_correction() {
     let es: Vec<EntrySummary> = desktop
         .call(Operation::Create(vec![tagged("detail target", &[])]))
         .unwrap();
-    // 复现本次排查的契约冲突：非 API 凭据同时携带 services 与 url，
-    // 错误必须点名 services 字段并说明规则，AI 才能据此自纠而不是盲试。
+    // 非 API 凭据同时带 url 与空 services 是无害写法，应直接接受。
     let patch: EntryPatch = serde_json::from_value(json!({
         "id":es[0].id,"expectedRevision":es[0].revision,
         "url":"https://example.invalid","services":[]
+    }))
+    .unwrap();
+    mcp.execute(Operation::Update(vec![patch])).unwrap();
+    // 真正矛盾的输入（API 凭据的 url 与第一个服务地址不同）必须点名 services 并说明规则，
+    // AI 才能据此自纠而不是盲试。
+    let api: Vec<EntrySummary> = desktop
+        .call(Operation::Create(vec![
+            serde_json::from_value(json!({
+                "kind":"api","title":"api target","secret":"FAKE_CORE_TEST_SECRET_8192",
+                "services":[{"protocol":"custom","url":"https://api.invalid"}]
+            }))
+            .unwrap(),
+        ]))
+        .unwrap();
+    let patch: EntryPatch = serde_json::from_value(json!({
+        "id":api[0].id,"expectedRevision":api[0].revision,
+        "url":"https://other.invalid","services":[{"protocol":"custom","url":"https://api.invalid"}]
     }))
     .unwrap();
     let error = mcp.execute(Operation::Update(vec![patch])).unwrap_err();
@@ -478,10 +495,17 @@ fn validation_errors_carry_field_details_for_self_correction() {
     let details = error.details.as_ref().unwrap();
     assert_eq!(details[0].field, "services");
     assert!(details[0].reason.contains("url"));
-    // 空名称创建失败时错误必须点名 title 字段。
-    let error = mcp
-        .execute(Operation::Create(vec![input("   ")]))
-        .unwrap_err();
+    // 名称可省略：有网站时按网站域名显示。
+    let named: Vec<serde_json::Value> = mcp.call(Operation::Create(vec![input("   ")])).unwrap();
+    let shown = mcp
+        .execute(Operation::Read(vec![
+            named[0]["id"].as_str().unwrap().into(),
+        ]))
+        .unwrap();
+    assert_eq!(shown[0]["name"], "example.invalid");
+    // 既没有网站也没有名称和账号时，错误必须点名 title 字段。
+    let nameless = serde_json::from_value(json!({"kind":"generic","title":" "})).unwrap();
+    let error = mcp.execute(Operation::Create(vec![nameless])).unwrap_err();
     assert_eq!(error.details.as_ref().unwrap()[0].field, "title");
 }
 
@@ -515,7 +539,7 @@ fn shared_interface_preserves_revision_trash_and_local_writes() {
     assert_eq!(
         desktop
             .execute(Operation::Read(vec![entry.id.clone()]))
-            .unwrap()[0]["account"],
+            .unwrap()[0]["groups"][0]["account"],
         "updated"
     );
     let target = dir.path().join("credential.txt");
@@ -600,6 +624,7 @@ fn core_denies_all_desktop_only_operations_even_if_mcp_adapter_misroutes() {
             id: "missing".into(),
             expected_revision: 1,
             field: "secret".into(),
+            group_id: None,
             service_id: None,
         }),
         Operation::Settings,
@@ -633,6 +658,7 @@ fn six_permissions_revoke_live_sessions_and_do_not_restrict_desktop() {
         delete: false,
         fill_input: false,
         write_file: false,
+        settings: false,
     };
     desktop.execute(Operation::SaveSettings(policy)).unwrap();
     let patch = serde_json::from_value(
@@ -827,5 +853,7 @@ fn desktop_and_mcp_sessions_share_one_core_without_sharing_identity() {
 }
 
 mod fixture;
+mod settings_mcp;
 mod storage_workflows;
+mod sync;
 mod transfer;

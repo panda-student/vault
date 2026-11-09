@@ -1,5 +1,23 @@
 use super::*;
-use vault_contracts::credentials::{ApiProtocol, ApiService, DatabaseFields, Kind};
+use vault_contracts::credentials::{
+    ApiProtocol, ApiService, CredentialGroup, DatabaseFields, Kind,
+};
+
+fn login(
+    id: &str,
+    environment: &str,
+    account: &str,
+    password: &str,
+    token: &str,
+) -> CredentialGroup {
+    CredentialGroup {
+        id: id.into(),
+        environment: environment.into(),
+        account: account.into(),
+        password: password.into(),
+        token: token.into(),
+    }
+}
 
 fn password() -> EntryInput {
     EntryInput {
@@ -7,12 +25,20 @@ fn password() -> EntryInput {
         title: "公司邮箱".into(),
         tags: vec!["工作".into(), "常用".into()],
         database: None,
-        account: "alice@example.com".into(),
         url: "https://mail.example.com".into(),
         documentation_url: "https://docs.example.com/mail".into(),
         services: vec![],
-        secret: "p@ss,\"word\"\n第二行".into(),
         notes: "备注包含逗号, 引号\" 和换行\r\n下一行".into(),
+        groups: vec![
+            login(
+                "g-prod",
+                "生产",
+                "alice@example.com",
+                "p@ss,\"word\"\n第二行",
+                "tok-prod",
+            ),
+            login("g-test", "测试", "alice-test", "test-pass", ""),
+        ],
     }
 }
 
@@ -22,7 +48,6 @@ fn api() -> EntryInput {
         title: "OpenAI".into(),
         tags: vec!["ai".into()],
         database: None,
-        account: "team".into(),
         url: "https://api.openai.com/v1".into(),
         documentation_url: "https://platform.openai.com/docs".into(),
         services: vec![
@@ -37,8 +62,8 @@ fn api() -> EntryInput {
                 url: "https://gateway.example.com/v1".into(),
             },
         ],
-        secret: "sk-test-123".into(),
         notes: String::new(),
+        groups: vec![login("g-api", "", "team", "", "sk-test-123")],
     }
 }
 
@@ -53,12 +78,11 @@ fn database() -> EntryInput {
             port: "3306".into(),
             database_name: "orders".into(),
         }),
-        account: "readonly".into(),
         url: String::new(),
         documentation_url: String::new(),
         services: vec![],
-        secret: "db-secret".into(),
         notes: "仅限内网".into(),
+        groups: vec![login("g-db", "", "readonly", "db-secret", "")],
     }
 }
 
@@ -68,12 +92,11 @@ fn generic() -> EntryInput {
         title: "Wi-Fi 密码".into(),
         tags: vec!["家庭".into()],
         database: None,
-        account: String::new(),
         url: String::new(),
         documentation_url: String::new(),
         services: vec![],
-        secret: "wifi-secret".into(),
         notes: String::new(),
+        groups: vec![login("g-wifi", "", "", "wifi-secret", "")],
     }
 }
 
@@ -83,6 +106,13 @@ fn all() -> Vec<EntryInput> {
 
 fn value(entry: &EntryInput) -> serde_json::Value {
     serde_json::to_value(entry).unwrap()
+}
+
+/// CSV does not carry group ids, so CSV roundtrips compare everything else.
+fn without_ids(entry: &EntryInput) -> serde_json::Value {
+    let mut entry = entry.clone();
+    entry.groups.iter_mut().for_each(|group| group.id.clear());
+    value(&entry)
 }
 
 fn reason(error: &AppError) -> String {
@@ -115,7 +145,7 @@ fn json_export_declares_format_and_version() {
     let bytes = encode(Format::Json, &all()).unwrap();
     let envelope: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(envelope["format"], "vault-export");
-    assert_eq!(envelope["version"], 1);
+    assert_eq!(envelope["version"], 2);
     assert!(envelope["exportedAt"].as_i64().unwrap() > 0);
     assert_eq!(envelope["entries"].as_array().unwrap().len(), 4);
 }
@@ -124,7 +154,7 @@ fn json_export_declares_format_and_version() {
 fn json_export_rejects_unknown_version() {
     let bytes = encode(Format::Json, &all()).unwrap();
     let mut envelope: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    envelope["version"] = 2.into();
+    envelope["version"] = 3.into();
     let error = decode(&serde_json::to_vec(&envelope).unwrap(), None).unwrap_err();
     assert_eq!(error.code, "UNSUPPORTED_EXPORT_VERSION");
 }
@@ -151,7 +181,7 @@ fn csv_export_roundtrips_every_field() {
     assert_eq!(decoded.entries.len(), source.len());
     for (index, imported) in decoded.entries.iter().enumerate() {
         assert_eq!(imported.row, index + 2);
-        assert_eq!(value(&imported.value), value(&source[index]));
+        assert_eq!(without_ids(&imported.value), without_ids(&source[index]));
     }
 }
 
@@ -162,7 +192,7 @@ fn csv_export_starts_with_chrome_columns_then_extra_fields() {
     let header = text.lines().next().unwrap();
     assert_eq!(
         header,
-        "name,url,username,password,note,type,tags,services,documentation_url,database_type,host,port,database_name"
+        "name,url,username,password,note,type,tags,services,documentation_url,database_type,host,port,database_name,environment,token,extra_groups"
     );
 }
 
@@ -177,8 +207,8 @@ fn csv_import_accepts_chrome_export_rows() {
     assert_eq!(entry.value.kind, Kind::Password);
     assert_eq!(entry.value.title, "GitHub");
     assert_eq!(entry.value.url, "https://github.com");
-    assert_eq!(entry.value.account, "alice");
-    assert_eq!(entry.value.secret, "s3cret");
+    assert_eq!(entry.value.groups[0].account, "alice");
+    assert_eq!(entry.value.groups[0].password, "s3cret");
     assert_eq!(entry.value.notes, "line1\r\nline2");
     assert!(entry.value.tags.is_empty());
     assert!(entry.value.services.is_empty());
@@ -190,7 +220,7 @@ fn csv_import_ignores_unknown_columns() {
     let bytes = b"name,url,username,password,note,extra\r\nExample,https://example.com,bob,pw,note,ignored\r\n";
     let decoded = decode(bytes, None).unwrap();
     assert_eq!(decoded.entries[0].value.title, "Example");
-    assert_eq!(decoded.entries[0].value.secret, "pw");
+    assert_eq!(decoded.entries[0].value.groups[0].password, "pw");
 }
 
 #[test]
@@ -255,7 +285,10 @@ fn encrypted_csv_roundtrip() {
     let decoded = decode(&bytes, Some("口令 passphrase")).unwrap();
     assert_eq!(decoded.format, Format::Csv);
     assert_eq!(decoded.entries.len(), source.len());
-    assert_eq!(value(&decoded.entries[2].value), value(&source[2]));
+    assert_eq!(
+        without_ids(&decoded.entries[2].value),
+        without_ids(&source[2])
+    );
 }
 
 #[test]
@@ -328,4 +361,27 @@ fn encrypted_container_uses_versioned_magic() {
     assert!(bytes.starts_with(b"VAULTEXP"));
     assert_eq!(bytes[8], 1);
     assert_eq!(bytes[9], Format::Json.code());
+}
+
+// 旧版本（version 1）导出的单账号 JSON 仍能导入，并转成一组凭据。
+#[test]
+fn json_version_one_single_login_becomes_one_group() {
+    let bytes = br#"{"format":"vault-export","version":1,"exportedAt":1,"entries":[
+        {"kind":"api","title":"Legacy","account":"dev","url":"https://a.invalid","services":[{"id":"s","protocol":"custom","url":"https://a.invalid"}],"secret":"legacy-key"}
+    ]}"#;
+    let decoded = decode(bytes, None).unwrap();
+    let groups = &decoded.entries[0].value.groups;
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].account, "dev");
+    assert_eq!(groups[0].token, "legacy-key");
+    assert!(groups[0].password.is_empty());
+}
+
+// 没有 token 列的 CSV（旧版或其他密码管理器）里，API 凭据的 password 列是密钥。
+#[test]
+fn csv_without_token_column_maps_api_password_to_token() {
+    let bytes = b"name,url,username,password,type\r\nKey,https://api.invalid,dev,sk-1,api\r\n";
+    let group = &decode(bytes, None).unwrap().entries[0].value.groups[0];
+    assert_eq!(group.token, "sk-1");
+    assert!(group.password.is_empty());
 }

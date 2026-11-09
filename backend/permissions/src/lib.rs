@@ -36,6 +36,7 @@ impl AccessPolicy for Access {
             Self::Delete => p.delete,
             Self::Input => p.fill_input,
             Self::File => p.write_file,
+            Self::Settings => p.settings,
             Self::DesktopOnly => false,
         }
     }
@@ -193,6 +194,10 @@ impl PermissionService {
         if a == Access::DesktopOnly {
             return Ok(false);
         }
+        // Settings cover the whole vault: only the default grant applies.
+        if a == Access::Settings {
+            return Ok(permitted(s, None, &[], a));
+        }
         if permitted(s, None, &[], a) {
             return Ok(true);
         }
@@ -339,6 +344,9 @@ pub fn access(op: &Operation) -> Access {
         Operation::CaptureTarget(_) => Access::Input,
         // Encrypted-only export through the desktop passphrase handshake.
         Operation::McpExport(_) => Access::File,
+        Operation::McpSettings | Operation::McpUpdateSettings(_) | Operation::McpSyncRun => {
+            Access::Settings
+        }
         _ => Access::DesktopOnly,
     }
 }
@@ -351,6 +359,7 @@ pub fn tool_access(name: &str, _s: &Settings) -> Option<Access> {
         "delete_entries" => Access::Delete,
         "capture_fill_target" | "write_credential" => Access::Input,
         "export_entries" => Access::File,
+        "get_settings" | "update_settings" | "sync_now" => Access::Settings,
         _ => return None,
     })
 }

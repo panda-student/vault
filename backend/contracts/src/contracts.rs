@@ -33,6 +33,9 @@ pub struct PinArgs {
 pub struct SecretArgs {
     pub id: String,
     pub expected_revision: i64,
+    pub group_id: Option<String>,
+    /// `password`, `token` or the legacy `secret` (password, else token).
+    pub field: Option<String>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

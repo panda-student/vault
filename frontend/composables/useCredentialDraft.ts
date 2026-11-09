@@ -3,7 +3,12 @@ import { invoke } from "../api/desktop";
 import type { Entry } from "../types/models";
 import type { VaultState } from "./state";
 import type { VaultDependencies } from "./dependencies";
-import { emptyService, fieldsFor } from "../utils/credentialForm";
+import {
+  emptyGroup,
+  emptyService,
+  fieldsFor,
+  savedSecret,
+} from "../utils/credentialForm";
 import { message } from "../utils/errors";
 export function useCredentialDraft(
   state: Pick<
@@ -126,38 +131,50 @@ export function useCredentialDraft(
     if (form.value.services.length < 20)
       form.value.services.push(emptyService());
   }
+  function addGroup() {
+    if (form.value.groups.length < 50) form.value.groups.push(emptyGroup());
+  }
+  function removeGroup(index: number) {
+    // Revealed values are keyed by group position, which shifts here.
+    hide();
+    form.value.groups.splice(index, 1);
+  }
   function closeForm() {
     if (saving.value) return;
     const key = draftKey();
     if (key) drafts.delete(key);
     loadEntry(detail.value, false);
   }
-  async function duplicate(sameSite = false) {
+  async function duplicate() {
     if (saving.value || !editing.value) return;
     const source = editing.value;
     const fields = cloneJson(form.value);
     const kind = formKind.value;
     try {
-      let secret = "";
-      if (!sameSite)
-        secret =
-          fields.secret ||
-          (await invoke<string>("credentials.readSecret", {
-            id: source.id,
-            expectedRevision: source.revision,
-          }));
+      // The copy is a new entry, so saved secrets are read into its draft once.
+      for (const group of fields.groups) {
+        for (const field of ["password", "token"] as const) {
+          if (!group[field] && savedSecret(group, field))
+            group[field] = await invoke<string>("credentials.readSecret", {
+              id: source.id,
+              expectedRevision: source.revision,
+              groupId: group.id,
+              field,
+            });
+        }
+        group.id = "";
+        group.hasPassword = false;
+        group.hasToken = false;
+      }
       openForm();
       formKind.value = kind;
-      form.value = sameSite
-        ? { ...fieldsFor(), url: fields.url, services: [] }
-        : { ...fields, title: fields.title + " · 副本", secret };
-      if (sameSite) form.value.tags = [...fields.tags];
+      form.value = {
+        ...fields,
+        title:
+          kind === "generic" && fields.title ? fields.title + " · 副本" : "",
+      };
       baseline.value = "";
-      notify(
-        sameSite
-          ? "已保留网站与标签，账号密码为空"
-          : "已复制为草稿，请修改环境和凭据",
-      );
+      notify("已复制为草稿，请修改后保存");
     } catch (v) {
       notify(message(v));
     }
@@ -170,6 +187,8 @@ export function useCredentialDraft(
     selectEntry,
     openForm,
     addService,
+    addGroup,
+    removeGroup,
     closeForm,
     duplicate,
   };

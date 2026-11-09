@@ -50,13 +50,11 @@ impl Vault {
             serde_json::to_vec(&(&s.mcp_tag_rules, &s.mcp_entry_rules))
                 .map_err(|_| AppError::invalid())?,
         );
-        let packed = crypto::encrypt(&self.key, POLICY.as_bytes(), &rules)?;
         c.execute(
             "UPDATE metadata SET value=?1 WHERE name='settings'",
             [bytes],
         )
         .map_err(crate::sql_error)?;
-        c.execute("INSERT INTO metadata(name,value) VALUES (?1,?2) ON CONFLICT(name) DO UPDATE SET value=excluded.value",params![POLICY,packed]).map_err(crate::sql_error)?;
-        Ok(())
+        self.put_metadata(c, POLICY, &rules)
     }
 }

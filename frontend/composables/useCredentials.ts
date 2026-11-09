@@ -1,9 +1,15 @@
 import { nextTick } from "vue";
 import { invoke } from "../api/desktop";
-import type { Entry, TrashEntry, Organization } from "../types/models";
+import type {
+  Entry,
+  TrashEntry,
+  Organization,
+  GroupField,
+} from "../types/models";
 import type { VaultState } from "./state";
 import type { VaultDependencies } from "./dependencies";
 import { message } from "../utils/errors";
+import { savedSecret } from "../utils/credentialForm";
 export function useCredentials(
   state: Pick<
     VaultState,
@@ -67,8 +73,10 @@ export function useCredentials(
     revealEpoch.value++;
   }
   function hide() {
-    revealed.value = null;
+    revealed.value = {};
   }
+  const secretKey = (index: number, field: "password" | "token") =>
+    `${index}:${field}`;
   async function refresh() {
     if (fetching) return;
     fetching = true;
@@ -102,38 +110,52 @@ export function useCredentials(
       await refresh();
     }
   }
-  async function reveal() {
-    if (revealed.value !== null) {
-      hide();
+  async function reveal(index: number, field: "password" | "token") {
+    const key = secretKey(index, field);
+    if (key in revealed.value) {
+      const next = { ...revealed.value };
+      delete next[key];
+      revealed.value = next;
       return;
     }
-    if (form.value.secret) {
-      revealed.value = form.value.secret;
+    const group = form.value.groups[index];
+    if (!group) return;
+    if (group[field]) {
+      revealed.value = { ...revealed.value, [key]: group[field] };
       return;
     }
     const e = editing.value;
-    if (!e) return;
+    if (!e || !savedSecret(group, field)) return;
     const epoch = revealEpoch.value;
     try {
       const secret = await invoke<string>("credentials.readSecret", {
         id: e.id,
         expectedRevision: e.revision,
+        groupId: group.id,
+        field,
       });
       if (
         epoch === revealEpoch.value &&
         editing.value?.id === e.id &&
         editing.value.revision === e.revision
       )
-        revealed.value = secret;
+        revealed.value = { ...revealed.value, [key]: secret };
     } catch (value) {
       notify(message(value));
       await refresh();
     }
   }
-  function updateSecret(value: string) {
-    const visible = revealed.value !== null;
-    form.value.secret = value;
-    if (visible) revealed.value = value;
+  function updateGroupSecret(
+    index: number,
+    field: "password" | "token",
+    value: string,
+  ) {
+    const key = secretKey(index, field);
+    const visible = key in revealed.value;
+    const group = form.value.groups[index];
+    if (!group) return;
+    group[field] = value;
+    if (visible) revealed.value = { ...revealed.value, [key]: value };
   }
   function rejectForm(text: string) {
     formError.value = text;
@@ -153,12 +175,17 @@ export function useCredentials(
     }
   }
   async function copy(
-    field: "account" | "secret" | "url" | "host" | "port" | "database_name",
+    field: "url" | "host" | "port" | "database_name",
     serviceId?: string,
     index?: number,
   ) {
-    const e = editing.value;
     try {
+      const service =
+        index !== undefined || serviceId
+          ? form.value.services[
+              index ?? form.value.services.findIndex((s) => s.id === serviceId)
+            ]
+          : undefined;
       const text =
         field === "host"
           ? form.value.database.host
@@ -166,25 +193,30 @@ export function useCredentials(
             ? form.value.database.port
             : field === "database_name"
               ? form.value.database.databaseName
-              : field === "account"
-                ? form.value.account
-                : field === "url"
-                  ? formKind.value === "api"
-                    ? (form.value.services[
-                        index ??
-                          form.value.services.findIndex(
-                            (s) => s.id === serviceId,
-                          )
-                      ]?.url ?? "")
-                    : form.value.url
-                  : form.value.secret;
-      if (field !== "secret" || text)
-        await invoke("clipboard.copyText", { text });
-      else if (e)
+              : service
+                ? service.url
+                : form.value.url;
+      if (!text) return;
+      await invoke("clipboard.copyText", { text });
+      notify("已复制");
+    } catch (value) {
+      notify(message(value));
+    }
+  }
+  /** Copy a group field; saved secrets are copied by the backend, never read here. */
+  async function copyGroup(index: number, field: GroupField) {
+    const e = editing.value;
+    const group = form.value.groups[index];
+    if (!group) return;
+    try {
+      const text = group[field];
+      if (text) await invoke("clipboard.copyText", { text });
+      else if (field !== "account" && e && group.id)
         await invoke("clipboard.copyField", {
           id: e.id,
           expectedRevision: e.revision,
           field,
+          groupId: group.id,
         });
       else return;
       notify("已复制");
@@ -198,44 +230,73 @@ export function useCredentials(
     formError.value = "";
     try {
       let updated: Entry;
+      const kind = formKind.value;
       const services =
-        formKind.value === "api"
-          ? form.value.services
+        kind === "database"
+          ? []
+          : form.value.services
               .filter((service) => service.url.trim())
-              .map((service) => ({ ...service, url: service.url.trim() }))
-          : [];
-      if (formKind.value === "api" && services.length === 0) {
+              .map((service) => ({ ...service, url: service.url.trim() }));
+      if (kind === "api" && services.length === 0) {
         rejectForm("API 凭据必须填写至少一个网站 / API 地址。");
         return;
       }
-      if (formKind.value === "password" && !form.value.url.trim()) {
+      if (kind === "password" && !form.value.url.trim()) {
         rejectForm("账号密码必须填写归属网站。");
         return;
       }
+      const groups = form.value.groups;
+      const hasSecret = groups.some(
+        (g) =>
+          g.password ||
+          g.token ||
+          savedSecret(g, "password") ||
+          savedSecret(g, "token"),
+      );
+      if ((kind === "password" || kind === "api") && !hasSecret) {
+        rejectForm("至少需要一组填写了密码或 Token 的凭据。");
+        return;
+      }
       const payload = {
-        ...form.value,
-        database: formKind.value === "database" ? form.value.database : null,
+        tags: form.value.tags,
+        notes: form.value.notes,
+        documentationUrl: form.value.documentationUrl,
+        database: kind === "database" ? form.value.database : null,
         services,
-        url:
-          formKind.value === "api"
-            ? (services[0]?.url ?? "")
-            : form.value.url.trim(),
+        url: kind === "api" ? (services[0]?.url ?? "") : form.value.url.trim(),
+        // Entries are shown by their site; only generic entries keep a name.
+        ...(kind === "generic" ? { title: form.value.title } : {}),
       };
       if (editing.value) {
-        // 非 API 条目不携带 services：后端要求 services 与 url 一致，传空数组会与之冲突。
-        const { secret, services: entryServices, ...fields } = payload;
-        const patch: Record<string, unknown> = {
-          ...fields,
+        const kept = new Set(groups.map((g) => g.id).filter(Boolean));
+        const removeGroups = editing.value.groups
+          .map((g) => g.id)
+          .filter((id) => !kept.has(id));
+        // Saved groups send only changed secrets; an empty field keeps the stored one.
+        const patch = {
+          ...payload,
           id: editing.value.id,
           expectedRevision: editing.value.revision,
-          ...(secret ? { secret } : {}),
+          groups: groups.map((g) => ({
+            ...(g.id ? { id: g.id } : {}),
+            environment: g.environment,
+            account: g.account,
+            ...(g.password || !g.id ? { password: g.password } : {}),
+            ...(g.token || !g.id ? { token: g.token } : {}),
+          })),
+          ...(removeGroups.length ? { removeGroups } : {}),
         };
-        if (formKind.value === "api") patch.services = entryServices;
         updated = await invoke("credentials.update", patch);
       } else
         updated = await invoke("credentials.create", {
           ...payload,
-          kind: formKind.value,
+          kind,
+          groups: groups.map(({ environment, account, password, token }) => ({
+            environment,
+            account,
+            password,
+            token,
+          })),
         });
       const key = draftKey();
       if (key) drafts.delete(key);
@@ -319,9 +380,10 @@ export function useCredentials(
     refresh,
     pin,
     reveal,
-    updateSecret,
+    updateGroupSecret,
     openUrl,
     copy,
+    copyGroup,
     save,
     askDelete,
     confirmDelete,

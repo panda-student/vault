@@ -16,6 +16,7 @@ flowchart TD
       Core --> Credential[credentials：凭据业务]
       Core --> Filling[filling：字段解析和填写]
       Core --> Transfer[transfer：导入导出编解码和加密容器]
+      Core --> Sync[sync：三方合并和远端存储]
       Core --> Update[updater：签名验证和更新]
       Core --> Platform[platform：Windows 能力和运行协调]
       Credential -. 仓储接口 .-> Storage[storage：SQLite 事务和加密]
@@ -39,7 +40,8 @@ flowchart TD
 | backend/permissions | 默认/标签/凭据权限、事务授权策略、输出保护 |
 | backend/filling | 凭据字段解析、文件模板和窗口填写用例 |
 | backend/storage | SQLite 连接和事务、加密记录、标签和垃圾桶持久化 |
-| backend/transfer | JSON/CSV 编解码、导入行校验和加密导出容器 |
+| backend/transfer | JSON/CSV 编解码、导入行校验、加密导出容器和同步文件容器 |
+| backend/sync | 按内容哈希的三方合并、文件夹 / WebDAV / GitHub 远端存储；只读写一个同步文件 |
 | backend/platform | UIA、SendInput、文件替换、进程、命名管道和暂停协调 |
 | backend/updater | 更新元数据、签名、下载、健康检查、回退和安装编排 |
 | backend/mcp | MCP 工具协议、参数适配、安全输出和 stdio 桥 |

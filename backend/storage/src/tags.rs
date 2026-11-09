@@ -34,9 +34,7 @@ impl Vault {
     pub(crate) fn save_catalog_on(&self, c: &Connection, catalog: &Organization) -> Result<()> {
         let plaintext =
             Zeroizing::new(serde_json::to_vec(catalog).map_err(|_| AppError::invalid())?);
-        let packed = crypto::encrypt(&self.key, CATALOG.as_bytes(), &plaintext)?;
-        c.execute("INSERT INTO metadata(name,value) VALUES (?1,?2) ON CONFLICT(name) DO UPDATE SET value=excluded.value",params![CATALOG,packed]).map_err(crate::sql_error)?;
-        Ok(())
+        self.put_metadata(c, CATALOG, &plaintext)
     }
     pub fn organization(&self) -> Result<Organization> {
         let connection = self.connection()?;

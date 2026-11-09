@@ -17,13 +17,30 @@ export interface ApiService {
   protocol: ApiProtocol;
   url: string;
 }
+/** One login of an entry; secrets never leave the backend in listings. */
+export interface GroupSummary {
+  id: string;
+  environment: string;
+  account: string;
+  hasPassword: boolean;
+  hasToken: boolean;
+}
+/** Editable group: password/token hold a newly typed value; empty keeps the saved one. */
+export interface GroupDraft extends GroupSummary {
+  password: string;
+  token: string;
+}
+export type GroupField = "account" | "password" | "token";
 export interface Entry {
   id: string;
   kind: Kind;
   tags: string[];
   database: DatabaseFields | null;
+  /** Stored title; only entries without a website are shown by it. */
   title: string;
-  account: string;
+  /** Display name from the backend: the website host, else the title. */
+  name: string;
+  groups: GroupSummary[];
   url: string;
   documentationUrl: string;
   services: ApiService[];
@@ -40,8 +57,12 @@ export interface McpPermissions {
   delete: boolean;
   fillInput: boolean;
   writeFile: boolean;
+  /** Global only: read all settings and change non-permission settings. */
+  settings: boolean;
 }
-export type PermissionKey = "access" | keyof McpPermissions;
+export type PermissionKey =
+  | "access"
+  | Exclude<keyof McpPermissions, "settings">;
 export type PermissionRule = Partial<Record<PermissionKey, boolean>>;
 export interface Settings {
   mcpEnabled: boolean;

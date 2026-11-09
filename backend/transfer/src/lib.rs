@@ -8,7 +8,7 @@ use aes_gcm::{Aes256Gcm, Nonce};
 use argon2::{Algorithm, Argon2, Params, Version};
 use serde::{Deserialize, Serialize};
 use vault_contracts::{
-    credentials::{ApiService, DatabaseFields, EntryInput, Kind},
+    credentials::{ApiService, CredentialGroup, DatabaseFields, EntryInput, Kind},
     errors::{AppError, Result},
 };
 use zeroize::Zeroizing;
@@ -16,7 +16,10 @@ use zeroize::Zeroizing;
 pub const MAX_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_ENTRIES: usize = 10_000;
 const FORMAT_NAME: &str = "vault-export";
+/// Encrypted container layout version.
 const VERSION: u32 = 1;
+/// JSON payload version: 2 stores credential groups; 1 (single account/secret) still imports.
+const JSON_VERSION: u32 = 2;
 
 const MAGIC: &[u8; 8] = b"VAULTEXP";
 const SALT_LEN: usize = 16;
@@ -28,7 +31,9 @@ const MAX_KDF_MEMORY: u32 = 1024 * 1024;
 const MAX_KDF_PASSES: u32 = 16;
 const MAX_KDF_LANES: u32 = 8;
 
-const CSV_HEADER: [&str; 13] = [
+/// The first credential group uses the common username/password columns so other
+/// password managers can read the file; further groups go to `extra_groups` as JSON.
+const CSV_HEADER: [&str; 16] = [
     "name",
     "url",
     "username",
@@ -42,6 +47,9 @@ const CSV_HEADER: [&str; 13] = [
     "host",
     "port",
     "database_name",
+    "environment",
+    "token",
+    "extra_groups",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -146,37 +154,83 @@ pub(crate) fn encode_encrypted_with(
     check_size(payload.len())?;
 
     let mut salt = [0u8; SALT_LEN];
-    let mut nonce_bytes = [0u8; NONCE_LEN];
-    getrandom::fill(&mut salt)
-        .and_then(|_| getrandom::fill(&mut nonce_bytes))
-        .map_err(|_| AppError::new("STORAGE_ERROR", "无法生成安全随机数。"))?;
-
+    getrandom::fill(&mut salt).map_err(|_| random_failed())?;
     let mut header = Vec::with_capacity(HEADER_LEN);
     header.extend_from_slice(MAGIC);
     header.push(VERSION as u8);
     header.push(format.code());
-    header.extend_from_slice(&kdf.m_cost.to_le_bytes());
-    header.extend_from_slice(&kdf.t_cost.to_le_bytes());
-    header.extend_from_slice(&kdf.p_cost.to_le_bytes());
+    kdf.write_le(&mut header);
     header.extend_from_slice(&salt);
-    let aad = header.clone();
-    header.extend_from_slice(&nonce_bytes);
-
     let key = derive_key(passphrase, &salt, &kdf)?;
-    let cipher = Aes256Gcm::new_from_slice(&key[..])
+    let sealed = seal_after_header(header, &key, &payload)?;
+    check_size(sealed.len())?;
+    Ok(sealed)
+}
+
+impl Kdf {
+    pub(crate) fn write_le(&self, out: &mut Vec<u8>) {
+        for value in [self.m_cost, self.t_cost, self.p_cost] {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+    }
+    /// Read the three costs from 12 bytes; the caller checks the length.
+    pub(crate) fn read_le(bytes: &[u8]) -> Self {
+        let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+        Self {
+            m_cost: word(0),
+            t_cost: word(4),
+            p_cost: word(8),
+        }
+    }
+}
+
+/// Append a fresh nonce and the AES-GCM ciphertext of `payload`, with the
+/// header already in `out` authenticated as associated data.
+pub(crate) fn seal_after_header(
+    mut out: Vec<u8>,
+    key: &[u8; 32],
+    payload: &[u8],
+) -> Result<Vec<u8>> {
+    let mut nonce = [0u8; NONCE_LEN];
+    getrandom::fill(&mut nonce).map_err(|_| random_failed())?;
+    let cipher = Aes256Gcm::new_from_slice(key)
         .map_err(|_| AppError::new("CRYPTO_ERROR", "无法初始化加密器。"))?;
-    let ciphertext = cipher
+    let sealed = cipher
         .encrypt(
-            Nonce::from_slice(&nonce_bytes),
+            Nonce::from_slice(&nonce),
             Payload {
-                msg: &payload,
-                aad: &aad,
+                msg: payload,
+                aad: &out,
             },
         )
-        .map_err(|_| AppError::new("CRYPTO_ERROR", "无法加密导出文件。"))?;
-    header.extend_from_slice(&ciphertext);
-    check_size(header.len())?;
-    Ok(header)
+        .map_err(|_| AppError::new("CRYPTO_ERROR", "无法加密数据。"))?;
+    out.extend_from_slice(&nonce);
+    out.extend_from_slice(&sealed);
+    Ok(out)
+}
+
+/// Decrypt what `seal_after_header` produced. `None` means a wrong key or
+/// tampered data; the caller has already checked the minimum length.
+pub(crate) fn open_after_header(
+    bytes: &[u8],
+    header_len: usize,
+    key: &[u8; 32],
+) -> Option<Zeroizing<Vec<u8>>> {
+    let cipher = Aes256Gcm::new_from_slice(key).ok()?;
+    cipher
+        .decrypt(
+            Nonce::from_slice(&bytes[header_len..header_len + NONCE_LEN]),
+            Payload {
+                msg: &bytes[header_len + NONCE_LEN..],
+                aad: &bytes[..header_len],
+            },
+        )
+        .ok()
+        .map(Zeroizing::new)
+}
+
+pub(crate) fn random_failed() -> AppError {
+    AppError::new("RANDOM_FAILED", "无法获取系统安全随机数。")
 }
 
 pub fn inspect(bytes: &[u8]) -> Result<Inspection> {
@@ -225,37 +279,16 @@ fn decode_encrypted(bytes: &[u8], passphrase: Option<&str>) -> Result<Decoded> {
     }
     let format =
         Format::from_code(bytes[9]).ok_or_else(|| invalid_file("未知的导出格式。".into()))?;
-    let kdf = Kdf {
-        m_cost: u32::from_le_bytes(bytes[10..14].try_into().unwrap()),
-        t_cost: u32::from_le_bytes(bytes[14..18].try_into().unwrap()),
-        p_cost: u32::from_le_bytes(bytes[18..22].try_into().unwrap()),
-    };
-    if kdf.m_cost < 8 * kdf.p_cost.max(1)
-        || kdf.m_cost > MAX_KDF_MEMORY
-        || kdf.t_cost == 0
-        || kdf.t_cost > MAX_KDF_PASSES
-        || kdf.p_cost == 0
-        || kdf.p_cost > MAX_KDF_LANES
-    {
+    let kdf = Kdf::read_le(&bytes[10..22]);
+    if !kdf_supported(&kdf) {
         return Err(invalid_file("导出文件使用了不受支持的加密参数。".into()));
     }
     let passphrase = passphrase
         .filter(|value| !value.is_empty())
         .ok_or_else(|| AppError::new("PASSPHRASE_REQUIRED", "该文件已加密，请输入口令。"))?;
     let salt = &bytes[HEADER_LEN - SALT_LEN..HEADER_LEN];
-    let nonce_bytes = &bytes[HEADER_LEN..HEADER_LEN + NONCE_LEN];
     let key = derive_key(passphrase, salt, &kdf)?;
-    let cipher = Aes256Gcm::new_from_slice(&key[..])
-        .map_err(|_| invalid_file("无法初始化解密器。".into()))?;
-    let plain = cipher
-        .decrypt(
-            Nonce::from_slice(nonce_bytes),
-            Payload {
-                msg: &bytes[HEADER_LEN + NONCE_LEN..],
-                aad: &bytes[..HEADER_LEN],
-            },
-        )
-        .map_err(|_| decrypt_failed())?;
+    let plain = open_after_header(bytes, HEADER_LEN, &key).ok_or_else(decrypt_failed)?;
     decode_payload(format, &plain)
 }
 
@@ -278,7 +311,7 @@ fn decode_json(text: &str) -> Result<Decoded> {
         return Err(invalid_file("不是受支持的导出文件。".into()));
     }
     match object.get("version").and_then(|v| v.as_u64()) {
-        Some(version) if version == VERSION as u64 => {}
+        Some(version) if (1..=JSON_VERSION as u64).contains(&version) => {}
         Some(_) => return Err(unsupported_version()),
         None => return Err(invalid_file("导出文件缺少版本号。".into())),
     }
@@ -386,17 +419,39 @@ fn csv_entry(row: usize, index: &HashMap<String, usize>, fields: &[String]) -> R
     } else {
         None
     };
+    let mut first = if index.contains_key("token") {
+        CredentialGroup {
+            account: get("username").to_string(),
+            password: get("password").to_string(),
+            token: get("token").to_string(),
+            ..Default::default()
+        }
+    } else {
+        // Files from older versions or other managers keep API keys in `password`.
+        CredentialGroup::from_secret(
+            kind,
+            get("username").to_string(),
+            get("password").to_string(),
+        )
+    };
+    first.environment = get("environment").to_string();
+    let mut groups = vec![first];
+    if !get("extra_groups").trim().is_empty() {
+        let extra: Vec<CredentialGroup> = serde_json::from_str(get("extra_groups"))
+            .map_err(|_| invalid_file(format!("第 {row} 行：extra_groups 字段格式不正确。")))?;
+        groups.extend(extra);
+    }
+    groups.retain(|group| !group.is_empty());
     Ok(EntryInput {
         kind,
         title: get("name").to_string(),
         tags,
         database,
-        account: get("username").to_string(),
         url: get("url").to_string(),
         documentation_url: get("documentation_url").to_string(),
         services,
-        secret: get("password").to_string(),
         notes: get("note").to_string(),
+        groups,
     })
 }
 
@@ -487,7 +542,7 @@ fn parse_csv(text: &str) -> Result<Vec<(usize, Vec<String>)>> {
 fn json_payload(entries: &[EntryInput]) -> Result<Vec<u8>> {
     let envelope = Envelope {
         format: FORMAT_NAME.into(),
-        version: VERSION,
+        version: JSON_VERSION,
         exported_at: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|elapsed| elapsed.as_millis() as i64)
@@ -505,11 +560,22 @@ fn csv_payload(entries: &[EntryInput]) -> Vec<u8> {
     text.push_str("\r\n");
     for entry in entries {
         let database = entry.database.clone().unwrap_or_default();
+        // CSV carries no group ids; imported groups always get fresh ones.
+        let first = entry.groups.first().cloned().unwrap_or_default();
+        let extra: Vec<CredentialGroup> = entry
+            .groups
+            .iter()
+            .skip(1)
+            .map(|group| CredentialGroup {
+                id: String::new(),
+                ..group.clone()
+            })
+            .collect();
         let row = [
             entry.title.clone(),
             entry.url.clone(),
-            entry.account.clone(),
-            entry.secret.clone(),
+            first.account,
+            first.password,
             entry.notes.clone(),
             kind_name(entry.kind).to_string(),
             serde_json::to_string(&entry.tags).unwrap_or_else(|_| "[]".into()),
@@ -519,6 +585,13 @@ fn csv_payload(entries: &[EntryInput]) -> Vec<u8> {
             database.host,
             database.port,
             database.database_name,
+            first.environment,
+            first.token,
+            if extra.is_empty() {
+                String::new()
+            } else {
+                serde_json::to_string(&extra).unwrap_or_else(|_| "[]".into())
+            },
         ];
         for (position, value) in row.iter().enumerate() {
             if position > 0 {
@@ -553,6 +626,15 @@ fn push_csv_field(output: &mut String, value: &str) {
     } else {
         output.push_str(value);
     }
+}
+
+/// Reject attacker-chosen KDF costs before deriving anything.
+pub(crate) fn kdf_supported(kdf: &Kdf) -> bool {
+    // Bound p_cost before multiplying: headers from files are untrusted.
+    (1..=MAX_KDF_LANES).contains(&kdf.p_cost)
+        && (1..=MAX_KDF_PASSES).contains(&kdf.t_cost)
+        && kdf.m_cost >= 8 * kdf.p_cost
+        && kdf.m_cost <= MAX_KDF_MEMORY
 }
 
 fn derive_key(passphrase: &str, salt: &[u8], kdf: &Kdf) -> Result<Zeroizing<[u8; 32]>> {
@@ -615,6 +697,8 @@ pub(crate) fn invalid_file(reason: String) -> AppError {
 pub(crate) fn decrypt_failed() -> AppError {
     AppError::new("DECRYPT_FAILED", "口令错误或文件已损坏，未导入任何条目。")
 }
+
+pub mod sync;
 
 #[cfg(test)]
 mod tests;

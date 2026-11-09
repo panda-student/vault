@@ -8,6 +8,7 @@ import type {
   Settings,
   Info,
   ApiService,
+  GroupDraft,
 } from "../types/models";
 import { missingSite, protocolName } from "../utils/display";
 export function createVaultState() {
@@ -22,7 +23,8 @@ export function createVaultState() {
   const query = ref(""),
     entries = ref<Entry[]>([]),
     selected = ref<string | null>(null),
-    revealed = ref<string | null>(null);
+    // Revealed secrets keyed by `${groupIndex}:${field}`; cleared on any change.
+    revealed = ref<Record<string, string>>({});
   const revealEpoch = ref(0);
   const info = ref<Info | null>(null),
     loading = ref(true),
@@ -39,10 +41,8 @@ export function createVaultState() {
     formError = ref("");
   const form = ref({
     title: "",
-    account: "",
     url: "",
     documentationUrl: "",
-    secret: "",
     notes: "",
     tags: [] as string[],
     database: {
@@ -52,6 +52,7 @@ export function createVaultState() {
       databaseName: "",
     } as DatabaseFields,
     services: [] as ApiService[],
+    groups: [] as GroupDraft[],
   });
   const creating = ref(false),
     baseline = ref("");
@@ -72,8 +73,9 @@ export function createVaultState() {
         (!typeFilter.value || e.kind === typeFilter.value) &&
         (!missingOnly.value || missingSite(e)) &&
         [
+          e.name,
           e.title,
-          e.account,
+          ...e.groups.flatMap((g) => [g.account, g.environment]),
           e.url,
           e.documentationUrl,
           ...e.tags,

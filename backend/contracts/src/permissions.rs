@@ -13,5 +13,7 @@ pub enum Access {
     Delete,
     Input,
     File,
+    /// Whole-vault settings; governed only by the global default, never tag or entry rules.
+    Settings,
     DesktopOnly,
 }

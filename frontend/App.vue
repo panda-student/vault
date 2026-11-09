@@ -7,7 +7,9 @@ import TrashPage from "./pages/TrashPage.vue";
 import McpPage from "./pages/McpPage.vue";
 import SettingsPage from "./pages/SettingsPage.vue";
 import UpdatesPage from "./pages/UpdatesPage.vue";
+import SyncDialogs from "./components/SyncDialogs.vue";
 import { setExportAttention } from "./api/desktop";
+import { entryName } from "./utils/display";
 const state = useVault();
 const v = reactive(state);
 const { deleteDialog } = state;
@@ -23,11 +25,14 @@ const mcpPassphrase = ref("");
 const mcpConfirm = ref("");
 const mcpError = ref("");
 const mcpBusy = ref(false);
+// AI 导出或设置同步时需要用户亲自输入口令：窗口弹到最上层并闪烁任务栏，结束后恢复。
+watch(
+  () => Boolean(v.pendingExport || v.pendingSync),
+  (active) => void setExportAttention(active).catch(() => undefined),
+);
 watch(
   () => v.pendingExport?.id,
   (id) => {
-    // 需要用户亲自输入口令：窗口弹到最上层并闪烁任务栏，结束后恢复。
-    void setExportAttention(Boolean(id)).catch(() => undefined);
     if (id) {
       mcpPassphrase.value = "";
       mcpConfirm.value = "";
@@ -155,7 +160,7 @@ async function saveOrganization() {
     <h2>移入垃圾桶？</h2>
     <p class="dialog-description">
       “{{
-        v.pendingDelete?.title
+        v.pendingDelete ? entryName(v.pendingDelete) : ""
       }}”将从正常列表移除。你可以在垃圾桶恢复。未保存的修改不会保留。
     </p>
     <div class="modal-actions">
@@ -286,5 +291,6 @@ async function saveOrganization() {
       </div>
     </form>
   </dialog>
+  <SyncDialogs :v="v" />
   <div v-if="v.toast" class="toast" role="status">{{ v.toast }}</div>
 </template>

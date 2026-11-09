@@ -49,6 +49,11 @@ export async function pickExportPath(name: string): Promise<string | null> {
 export function setExportAttention(active: boolean): Promise<void> {
   return tauriInvoke<void>("export_attention", { active });
 }
+/** Folder for the sync file, e.g. inside a cloud-drive folder. */
+export async function pickSyncFolder(): Promise<string | null> {
+  const selected = await open({ multiple: false, directory: true });
+  return typeof selected === "string" ? selected : null;
+}
 export async function pickImportPath(): Promise<string | null> {
   const selected = await open({
     multiple: false,

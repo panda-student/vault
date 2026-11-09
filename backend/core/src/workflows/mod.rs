@@ -163,6 +163,7 @@ impl CoreSession {
                 args.expected_revision,
                 &args.field,
                 args.service_id.as_deref(),
+                args.group_id.as_deref(),
             )?),
             Operation::CopyField(args) => {
                 let text = storage.read_field(
@@ -170,6 +171,7 @@ impl CoreSession {
                     args.expected_revision,
                     &args.field,
                     args.service_id.as_deref(),
+                    args.group_id.as_deref(),
                 )?;
                 self.service.windows.copy_text(text)?;
                 Ok(Value::Null)
@@ -198,6 +200,8 @@ impl CoreSession {
                 self.directory(),
                 enabled,
             )?),
+            Operation::McpSettings => self.mcp_settings(),
+            Operation::McpUpdateSettings(patch) => self.mcp_update_settings(patch),
             Operation::CaptureTarget(request) => self
                 .service
                 .filling
@@ -213,6 +217,19 @@ impl CoreSession {
             Operation::TransferPending => self.transfer_pending(),
             Operation::TransferRespond(args) => self.transfer_respond(args),
             Operation::McpExport(args) => self.mcp_export(args),
+            Operation::SyncStatus => encoded(self.sync_status()?),
+            Operation::SyncCredentials => self.sync_credentials(),
+            Operation::SyncConfigure(setup) => encoded(self.sync_configure(setup)?),
+            Operation::SyncTest(setup) => self.sync_test(setup),
+            Operation::SyncRun => encoded(self.sync_run(None)?),
+            Operation::SyncResolve(args) => encoded(self.sync_run(Some(args.choice))?),
+            Operation::SyncDisable => encoded(self.sync_disable()?),
+            Operation::SyncPending => self.sync_pending(),
+            Operation::SyncRespond(args) => self.sync_respond(args),
+            Operation::McpSyncRun => {
+                self.sync_run(None)?;
+                encoded(self.sync_status_for_mcp()?)
+            }
         }
     }
 }

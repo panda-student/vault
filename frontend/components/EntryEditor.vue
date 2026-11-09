@@ -2,8 +2,9 @@
 import { toRefs } from "vue";
 import type { UnwrapRef } from "vue";
 import type { VaultUI } from "../composables/useVault";
-import { kindName, secretName, timestamp } from "../utils/display";
+import { entryName, groupLabel, kindName, timestamp } from "../utils/display";
 import ActionIcon from "./ActionIcon.vue";
+import { savedSecret } from "../utils/credentialForm";
 const props = defineProps<{ v: UnwrapRef<VaultUI> }>();
 const {
   creating,
@@ -19,14 +20,34 @@ const {
 const {
   save,
   copy,
+  copyGroup,
   reveal,
-  updateSecret,
+  updateGroupSecret,
   addService,
+  addGroup,
+  removeGroup,
   askDelete,
   closeForm,
   duplicate,
   openUrl,
 } = props.v;
+type Secret = "password" | "token";
+const secretFields = ["password", "token"] as const;
+const secretLabel = { password: "密码", token: "Token" } as const;
+const shown = (index: number, field: Secret) =>
+  `${index}:${field}` in revealed.value;
+const saved = (index: number, field: Secret) => {
+  const group = form.value.groups[index];
+  return !!group && savedSecret(group, field);
+};
+const secretPlaceholder = (index: number, field: Secret) =>
+  saved(index, field)
+    ? "已保存，输入新值替换"
+    : editing.value && form.value.groups[index]?.id
+      ? "未设置"
+      : field === "password"
+        ? "输入密码"
+        : "输入 API Key / Token";
 const databaseTypes = [
   "MySQL",
   "PostgreSQL",
@@ -107,7 +128,7 @@ function addTag(event: Event) {
         <div class="detail-title">
           <div class="detail-heading">
             <h2 id="detail-title">
-              {{ editing ? editing.title : `新增${kindName(formKind)}` }}
+              {{ editing ? entryName(editing) : `新增${kindName(formKind)}` }}
             </h2>
             <span class="tag">{{ kindName(formKind) }}</span>
           </div>
@@ -123,16 +144,7 @@ function addTag(event: Event) {
             :disabled="saving"
             @click="duplicate()"
           >
-            复制为新凭据</button
-          ><button
-            v-if="formKind === 'password'"
-            type="button"
-            class="secondary"
-            id="same-site"
-            :disabled="saving"
-            @click="duplicate(true)"
-          >
-            新增同网站账号
+            复制为新凭据
           </button>
         </div>
         <fieldset :disabled="saving">
@@ -236,89 +248,17 @@ function addTag(event: Event) {
               </div>
             </div>
           </div>
-          <div class="identity-fields">
-            <div class="form-field">
-              <label for="f-title">名称</label
-              ><input
-                id="f-title"
-                v-model="form.title"
-                required
-                maxlength="256"
-                placeholder="凭据名称"
-              />
-            </div>
-            <div class="form-field">
-              <label for="f-account"
-                >{{ formKind === "api" ? "归属账号 / 环境" : "账号"
-                }}<span class="optional">可选</span></label
-              >
-              <div class="input-actions">
-                <input
-                  id="f-account"
-                  v-model="form.account"
-                  autocomplete="off"
-                  maxlength="1024"
-                  :placeholder="
-                    formKind === 'api' ? '例如：开发环境' : '用户名或邮箱'
-                  "
-                /><button
-                  v-if="editing"
-                  type="button"
-                  class="icon-action"
-                  data-copy="account"
-                  :disabled="!form.account"
-                  aria-label="复制账号"
-                  title="复制账号"
-                  @click="copy('account')"
-                >
-                  <ActionIcon name="copy" />
-                </button>
-              </div>
-            </div>
-          </div>
-          <div class="form-field">
-            <label for="f-secret"
-              >{{ secretName(formKind)
-              }}<span v-if="editing" class="optional"
-                >输入新值替换，留空保留</span
+          <div v-if="formKind === 'generic'" class="form-field">
+            <label for="f-title"
+              >名称<span class="optional"
+                >可选，填写网址时按网站显示</span
               ></label
-            >
-            <div class="input-actions">
-              <input
-                id="f-secret"
-                :value="form.secret || revealed || ''"
-                @input="updateSecret(($event.target as HTMLInputElement).value)"
-                :type="revealed === null ? 'password' : 'text'"
-                autocomplete="new-password"
-                :required="
-                  !editing && (formKind === 'password' || formKind === 'api')
-                "
-                maxlength="131072"
-                :placeholder="editing ? '••••••••••••••••' : '输入密钥或密码'"
-              /><button
-                v-if="editing"
-                id="reveal-btn"
-                type="button"
-                class="icon-action"
-                :aria-label="revealed === null ? '显示密钥' : '隐藏密钥'"
-                :title="revealed === null ? '显示密钥' : '隐藏密钥'"
-                @click="reveal"
-              >
-                <ActionIcon
-                  :name="revealed === null ? 'eye' : 'eye-off'"
-                /></button
-              ><button
-                v-if="editing"
-                type="button"
-                class="icon-action"
-                data-copy="secret"
-                aria-label="复制密钥"
-                title="复制密钥"
-                @click="copy('secret')"
-              >
-                <ActionIcon name="copy" />
-              </button>
-            </div>
+            ><input
+              id="f-title"
+              v-model="form.title"
+              maxlength="256"
+              placeholder="例如：家庭 Wi-Fi"
+            />
           </div>
           <div
             v-if="formKind === 'password' || formKind === 'generic'"
@@ -362,11 +302,15 @@ function addTag(event: Event) {
             </div>
           </div>
           <div
-            v-else-if="formKind === 'api'"
+            v-if="formKind === 'api' || formKind === 'password'"
             class="form-field api-services-editor"
           >
             <div class="services-editor-heading">
-              <label>网站 / API 地址</label
+              <label
+                >{{ formKind === "api" ? "网站 / API 地址" : "API 地址"
+                }}<span v-if="formKind === 'password'" class="optional"
+                  >可选，供 Token 调用</span
+                ></label
               ><button
                 id="add-service"
                 class="text-btn"
@@ -400,7 +344,11 @@ function addTag(event: Event) {
                   <option value="custom">HTTP/HTTPS</option>
                 </select>
                 <input
-                  :id="index === 0 ? 'f-url' : `f-url-${index}`"
+                  :id="
+                    index === 0 && formKind === 'api'
+                      ? 'f-url'
+                      : `f-url-${index}`
+                  "
                   v-model="service.url"
                   maxlength="8192"
                   :aria-label="`服务 ${index + 1} 地址`"
@@ -433,7 +381,7 @@ function addTag(event: Event) {
                   type="button"
                   class="icon-action remove-action"
                   :data-remove-service="index"
-                  :disabled="form.services.length <= 1"
+                  :disabled="formKind === 'api' && form.services.length <= 1"
                   :aria-label="`移除服务 ${index + 1}`"
                   title="移除地址"
                   @click="form.services.splice(index, 1)"
@@ -442,9 +390,11 @@ function addTag(event: Event) {
                 </button>
               </div>
             </div>
-            <small class="service-hint"
-              >至少填写一个地址；各协议地址共用同一密钥，仅保存与填写。</small
-            >
+            <small class="service-hint">{{
+              formKind === "api"
+                ? "至少填写一个地址；各协议地址共用同一 Token，仅保存与填写。"
+                : "这个网站的 Token 需要调用接口时填写。"
+            }}</small>
           </div>
           <div v-if="formKind === 'api'" class="form-field">
             <label for="f-documentation-url"
@@ -468,6 +418,129 @@ function addTag(event: Event) {
                 <ActionIcon name="external" />
               </button>
             </div>
+          </div>
+          <div class="form-field groups-editor">
+            <div class="services-editor-heading">
+              <label
+                >凭据<span class="optional">不同环境或账号各占一组</span></label
+              ><button
+                id="add-group"
+                class="text-btn"
+                type="button"
+                :disabled="form.groups.length >= 50"
+                @click="addGroup"
+              >
+                ＋ 添加一组
+              </button>
+            </div>
+            <div
+              v-for="(group, index) in form.groups"
+              :key="index"
+              class="group-card"
+              :data-group-index="index"
+            >
+              <div class="group-heading">
+                <strong>{{ groupLabel(group) || `第 ${index + 1} 组` }}</strong
+                ><button
+                  type="button"
+                  class="icon-action remove-action"
+                  :data-remove-group="index"
+                  :disabled="form.groups.length <= 1"
+                  :aria-label="`移除第 ${index + 1} 组凭据`"
+                  title="移除这一组"
+                  @click="removeGroup(index)"
+                >
+                  <ActionIcon name="remove" />
+                </button>
+              </div>
+              <div class="identity-fields">
+                <div class="form-field">
+                  <label :for="`f-environment-${index}`"
+                    >环境<span class="optional">可选</span></label
+                  ><input
+                    :id="`f-environment-${index}`"
+                    v-model="group.environment"
+                    maxlength="256"
+                    placeholder="例如：生产 / 测试"
+                  />
+                </div>
+                <div class="form-field">
+                  <label :for="`f-account-${index}`"
+                    >账号<span class="optional">可选</span></label
+                  >
+                  <div class="input-actions">
+                    <input
+                      :id="`f-account-${index}`"
+                      v-model="group.account"
+                      autocomplete="off"
+                      maxlength="1024"
+                      placeholder="用户名或邮箱"
+                    /><button
+                      type="button"
+                      class="icon-action"
+                      :data-copy-account="index"
+                      :disabled="!group.account"
+                      aria-label="复制账号"
+                      title="复制账号"
+                      @click="copyGroup(index, 'account')"
+                    >
+                      <ActionIcon name="copy" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div
+                v-for="field in secretFields"
+                :key="field"
+                class="form-field"
+              >
+                <label :for="`f-${field}-${index}`">{{
+                  secretLabel[field]
+                }}</label>
+                <div class="input-actions">
+                  <input
+                    :id="`f-${field}-${index}`"
+                    :value="group[field] || revealed[`${index}:${field}`] || ''"
+                    @input="
+                      updateGroupSecret(
+                        index,
+                        field,
+                        ($event.target as HTMLInputElement).value,
+                      )
+                    "
+                    :type="shown(index, field) ? 'text' : 'password'"
+                    autocomplete="new-password"
+                    maxlength="131072"
+                    :placeholder="secretPlaceholder(index, field)"
+                  /><button
+                    type="button"
+                    class="icon-action"
+                    :data-reveal="`${index}:${field}`"
+                    :disabled="!group[field] && !saved(index, field)"
+                    :aria-label="`${shown(index, field) ? '隐藏' : '显示'}${secretLabel[field]}`"
+                    :title="`${shown(index, field) ? '隐藏' : '显示'}${secretLabel[field]}`"
+                    @click="reveal(index, field)"
+                  >
+                    <ActionIcon
+                      :name="shown(index, field) ? 'eye-off' : 'eye'"
+                    /></button
+                  ><button
+                    type="button"
+                    class="icon-action"
+                    :data-copy-secret="`${index}:${field}`"
+                    :disabled="!group[field] && !saved(index, field)"
+                    :aria-label="`复制${secretLabel[field]}`"
+                    :title="`复制${secretLabel[field]}`"
+                    @click="copyGroup(index, field)"
+                  >
+                    <ActionIcon name="copy" />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <small class="service-hint"
+              >密码和 Token 可只填其一；已保存的值留空即保留。</small
+            >
           </div>
           <div class="form-field">
             <label for="f-notes">备注<span class="optional">可选</span></label

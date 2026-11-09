@@ -51,7 +51,26 @@ impl VaultRepository for Vault {
     fn save_settings(&self, s: &Settings) -> Result<()> {
         Vault::save_settings(self, s)
     }
+    fn set_close_to_tray(&self, value: bool) -> Result<bool> {
+        Vault::set_close_to_tray(self, value)
+    }
     fn protected_values(&self) -> Result<Zeroizing<Vec<String>>> {
         Vault::protected_values(self)
+    }
+    fn sync_snapshot(&self) -> Result<vault_contracts::sync::SyncSnapshot> {
+        Vault::sync_snapshot(self)
+    }
+    fn apply_sync(
+        &self,
+        changes: Vec<vault_contracts::sync::LocalChange>,
+        expected: &std::collections::BTreeMap<String, vault_contracts::sync::SyncSlot>,
+    ) -> Result<Vec<String>> {
+        Vault::apply_sync(self, changes, expected)
+    }
+    fn sync_blob(&self, name: &str) -> Result<Option<Zeroizing<Vec<u8>>>> {
+        Vault::sync_blob(self, name)
+    }
+    fn store_sync_blob(&self, name: &str, bytes: Option<&[u8]>) -> Result<()> {
+        Vault::store_sync_blob(self, name, bytes)
     }
 }

@@ -30,6 +30,7 @@ pub(crate) struct CoreService {
     pub(crate) permissions: permissions::PermissionService,
     pub(crate) desktop: RwLock<vault_contracts::desktop::DesktopMetadata>,
     pub(crate) transfer: crate::transfer::TransferCoordinator,
+    pub(crate) sync: crate::sync::SyncService,
 }
 pub struct CoreSession {
     execution_gate: Arc<RwLock<()>>,
@@ -41,6 +42,7 @@ pub struct CoreSession {
 pub(crate) fn assemble(
     repository: Arc<dyn vault_contracts::ports::repository::VaultRepository>,
     platform: Arc<dyn SystemPlatform>,
+    stores: Arc<dyn vault_contracts::ports::sync::RemoteStoreFactory>,
     mcp_mode: bool,
 ) -> Result<Arc<CoreSession>> {
     Ok(Arc::new(CoreSession {
@@ -53,6 +55,7 @@ pub(crate) fn assemble(
             permissions: permissions::PermissionService,
             desktop: RwLock::new(Default::default()),
             transfer: Default::default(),
+            sync: crate::sync::SyncService::new(stores),
         }),
         caller: if mcp_mode {
             permissions::Caller::Mcp
@@ -87,18 +90,22 @@ impl CoreSession {
             .desktop
             .read()
             .map_err(|_| AppError::storage())?;
-        let executable = std::env::current_exe().map_err(|_| AppError::storage())?;
         Ok(json!({
             "version":env!("CARGO_PKG_VERSION"),
             "backendPid":std::process::id(),
-            "executable":executable,
+            "executable":current_executable()?,
             "dataDirectory":self.directory(),
             "webviewVersion":metadata.webview_version,
             "smokeTest":metadata.smoke_test,
             "settings":settings,
-            "startupEnabled":self.service.windows.startup_enabled(&executable,
-            self.directory())?
+            "startupEnabled":self.startup_enabled()?
         }))
+    }
+    /// Whether this executable starts with Windows for the bound data directory.
+    pub(crate) fn startup_enabled(&self) -> Result<bool> {
+        self.service
+            .windows
+            .startup_enabled(&current_executable()?, self.directory())
     }
     pub(crate) fn empty_trash(
         &self,
@@ -149,19 +156,36 @@ impl CoreSession {
         for value in self.service.storage.protected_values()?.iter() {
             guard.add(value);
         }
+        if let Some(passphrase) = self.sync_passphrase() {
+            guard.add(&passphrase);
+        }
         Ok(())
     }
+    /// Register every secret-bearing string of a request before it can be echoed.
     pub fn protect_input(&self, value: &Value) -> Result<()> {
-        let mut guard = self.guard.write().map_err(|_| AppError::storage())?;
-        if let Some(secret) = value.get("secret").and_then(Value::as_str) {
-            guard.add(secret);
-        }
-        if let Some(items) = value.get("items").and_then(Value::as_array) {
-            for item in items {
-                if let Some(secret) = item.get("secret").and_then(Value::as_str) {
-                    guard.add(secret);
+        fn collect<'a>(value: &'a Value, found: &mut Vec<&'a str>) {
+            match value {
+                Value::Object(map) => {
+                    for (key, item) in map {
+                        match item {
+                            Value::String(text)
+                                if matches!(key.as_str(), "secret" | "password" | "token") =>
+                            {
+                                found.push(text)
+                            }
+                            _ => collect(item, found),
+                        }
+                    }
                 }
+                Value::Array(items) => items.iter().for_each(|item| collect(item, found)),
+                _ => {}
             }
+        }
+        let mut found = Vec::new();
+        collect(value, &mut found);
+        let mut guard = self.guard.write().map_err(|_| AppError::storage())?;
+        for secret in found.into_iter().filter(|s| !s.is_empty()) {
+            guard.add(secret);
         }
         Ok(())
     }
@@ -196,7 +220,8 @@ impl CoreSession {
         } else {
             None
         };
-        let _shared = if !installing {
+        // Long waits take the gate only around their own storage steps (`gated`).
+        let _shared = if !installing && !operation.waits_long() {
             Some(
                 self.execution_gate
                     .read()
@@ -206,10 +231,7 @@ impl CoreSession {
             None
         };
         if self.service.updater.installing() && !matches!(&operation, Operation::UpdateStatus) {
-            return Err(AppError::new(
-                "UPDATE_IN_PROGRESS",
-                "程序正在退出以完成更新。",
-            ));
+            return Err(update_in_progress());
         }
         let storage = &self.service.storage;
         self.service.permissions.authorize_operation(
@@ -224,21 +246,23 @@ impl CoreSession {
             self.refresh_output_guard(&mut guard)?;
             match &operation {
                 Operation::Create(values) => {
-                    for value in values {
-                        guard.add(&value.secret);
+                    for secret in values.iter().flat_map(|value| value.secrets()) {
+                        guard.add(secret);
                     }
                 }
                 Operation::Update(values) => {
-                    for value in values {
-                        if let Some(secret) = &value.secret {
-                            guard.add(secret);
-                        }
+                    for secret in values.iter().flat_map(|value| value.secrets()) {
+                        guard.add(secret);
                     }
                 }
                 _ => {}
             }
         }
+        let changes_entries = operation.changes_entries();
         let result = self.dispatch(operation);
+        if changes_entries && result.is_ok() {
+            self.service.sync.mark_dirty();
+        }
 
         if is_mcp {
             let mut guard = self.guard.write().map_err(|_| AppError::storage())?;
@@ -250,6 +274,18 @@ impl CoreSession {
         } else {
             result
         }
+    }
+    /// Run one storage step under the shared execution gate, so it never
+    /// overlaps an update install. Used by work that waits on the network.
+    pub(crate) fn gated<T>(&self, step: impl FnOnce() -> Result<T>) -> Result<T> {
+        let _shared = self
+            .execution_gate
+            .read()
+            .map_err(|_| AppError::storage())?;
+        if self.service.updater.installing() {
+            return Err(update_in_progress());
+        }
+        step()
     }
     pub(crate) fn saved(&self, entries: Vec<EntrySummary>, is_mcp: bool) -> Result<Value> {
         if is_mcp {
@@ -269,6 +305,23 @@ impl CoreSession {
             encoded(entries)
         }
     }
+}
+
+const fn update_in_progress() -> AppError {
+    AppError::new("UPDATE_IN_PROGRESS", "程序正在退出以完成更新。")
+}
+
+/// Milliseconds since the Unix epoch.
+pub(crate) fn now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
+/// The running program; startup registration and settings refer to it.
+pub(crate) fn current_executable() -> Result<std::path::PathBuf> {
+    std::env::current_exe().map_err(|_| AppError::storage())
 }
 
 // Normalize product-owned path segments for generated configuration;

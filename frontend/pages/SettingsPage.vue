@@ -3,6 +3,7 @@ import { toRefs, ref } from "vue";
 import type { UnwrapRef } from "vue";
 import type { VaultUI } from "../composables/useVault";
 import TransferPanel from "../components/TransferPanel.vue";
+import SyncPanel from "../components/SyncPanel.vue";
 import thirdPartyNotices from "../../THIRD_PARTY_NOTICES.txt?raw";
 const props = defineProps<{ v: UnwrapRef<VaultUI> }>();
 const { info, settingsSaving } = toRefs(props.v);
@@ -74,6 +75,7 @@ const licenses = ref<HTMLDialogElement | null>(null);
           </button>
         </div>
       </div>
+      <SyncPanel :v="v" />
       <TransferPanel :v="v" />
     </div>
     <dialog ref="licenses" class="licenses-dialog">

@@ -8,6 +8,7 @@
   "vault-platform": ["vault-contracts", "vault-common"],
   "vault-updater": ["vault-contracts", "vault-common"],
   "vault-transfer": ["vault-contracts"],
+  "vault-sync": ["vault-contracts"],
   "vault-core": [
     "vault-contracts",
     "vault-common",
@@ -17,7 +18,8 @@
     "vault-storage",
     "vault-platform",
     "vault-updater",
-    "vault-transfer"
+    "vault-transfer",
+    "vault-sync"
   ],
   "vault-mcp": ["vault-contracts", "vault-core", "vault-platform"],
   "vault": ["vault-core", "vault-mcp"]

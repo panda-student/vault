@@ -6,6 +6,8 @@ use super::{
     },
     credentials::{EntryInput, EntryPatch, EntryVersion, Kind, Settings},
     filling::CaptureRequest,
+    settings::McpSettingsPatch,
+    sync::{SyncResolveArgs, SyncRespondArgs, SyncSetup},
     write::WriteArgs,
 };
 use serde::Deserialize;
@@ -40,6 +42,7 @@ pub struct FieldRequest {
     pub expected_revision: i64,
     pub field: String,
     pub service_id: Option<String>,
+    pub group_id: Option<String>,
 }
 pub enum Operation {
     UpdateStatus,
@@ -84,6 +87,10 @@ pub enum Operation {
         executable: PathBuf,
         enabled: bool,
     },
+    /// MCP read of every setting; secrets are never part of settings.
+    McpSettings,
+    /// MCP partial update of non-permission settings only.
+    McpUpdateSettings(McpSettingsPatch),
     CaptureTarget(CaptureRequest),
     Write(WriteArgs),
     /// Desktop-only file export; MCP can never choose a path or receive content.
@@ -95,4 +102,48 @@ pub enum Operation {
     TransferRespond(TransferRespondArgs),
     /// MCP asks the on-screen user for a passphrase; the caller receives status only.
     McpExport(McpExportArgs),
+    /// Desktop-only sync management; the passphrase is typed on the desktop.
+    SyncStatus,
+    SyncCredentials,
+    SyncConfigure(SyncSetup),
+    SyncTest(SyncSetup),
+    SyncRun,
+    SyncResolve(SyncResolveArgs),
+    SyncDisable,
+    SyncPending,
+    SyncRespond(SyncRespondArgs),
+    /// MCP runs one sync; conflicts stay for the desktop user to settle.
+    McpSyncRun,
+}
+impl Operation {
+    /// Writes that change entries and so should reach the remote soon.
+    pub fn changes_entries(&self) -> bool {
+        matches!(
+            self,
+            Self::Create(_)
+                | Self::Update(_)
+                | Self::Delete(_)
+                | Self::Pin { .. }
+                | Self::Organize { .. }
+                | Self::Restore { .. }
+                | Self::EmptyTrash { .. }
+                | Self::Import(_)
+        )
+    }
+    /// Operations that may wait on the network or on the desktop user. They
+    /// must not hold the execution gate, or an update install would wait too.
+    /// They also wait for a running sync, which itself takes the gate.
+    pub fn waits_long(&self) -> bool {
+        matches!(
+            self,
+            Self::SyncConfigure(_)
+                | Self::SyncTest(_)
+                | Self::SyncRun
+                | Self::SyncResolve(_)
+                | Self::SyncDisable
+                | Self::SyncRespond(_)
+                | Self::McpSyncRun
+                | Self::McpUpdateSettings(_)
+        )
+    }
 }

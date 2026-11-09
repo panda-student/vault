@@ -150,10 +150,82 @@ impl Worker {
         let _ = self.reader.await;
     }
 }
-fn paused(id: &Value, uncertain: bool) -> Value {
-    json!({"jsonrpc":"2.0","id":id,"error":{"code":-32000,"message":if uncertain {
-        "MCP service stopped before its response. Outcome unknown; inspect current state before retrying."
-    } else { "UPDATE_IN_PROGRESS: MCP service is temporarily paused; retry after the update. No operation was executed." }}})
+/// A request the bridge answers itself when no backend can take it.
+#[derive(Clone)]
+struct Pending {
+    id: Value,
+    tool_call: bool,
+}
+impl Pending {
+    fn of(value: &Value) -> Option<Self> {
+        Some(Self {
+            id: value.get("id")?.clone(),
+            tool_call: value.get("method").and_then(Value::as_str) == Some("tools/call"),
+        })
+    }
+    fn of_bytes(bytes: &[u8]) -> Option<Self> {
+        Self::of(&serde_json::from_slice(bytes).ok()?)
+    }
+}
+/// Tool calls get a tool result with isError so the calling model reads the reason
+/// and retries itself; clients show protocol errors to the user as pop-ups instead.
+fn tool_error(id: &Value, code: &str, message: &str) -> Value {
+    let error = json!({"code": code, "message": message});
+    json!({"jsonrpc":"2.0","id":id,"result":{
+        "content":[{"type":"text","text":error.to_string()}],
+        "structuredContent":error,
+        "isError":true
+    }})
+}
+fn paused(request: &Pending, uncertain: bool) -> Value {
+    let (code, message) = if uncertain {
+        (
+            "OUTCOME_UNKNOWN",
+            "MCP service stopped before its response. Outcome unknown; inspect current state before retrying.",
+        )
+    } else {
+        (
+            "UPDATE_IN_PROGRESS",
+            "MCP service is temporarily paused; retry in a few seconds. No operation was executed.",
+        )
+    };
+    if request.tool_call {
+        tool_error(&request.id, code, message)
+    } else {
+        json!({"jsonrpc":"2.0","id":request.id,"error":{"code":-32000,"message":format!("{code}: {message}")}})
+    }
+}
+const ARGUMENTS_OBJECT: &str = "arguments must be a JSON object holding the tool parameters.";
+/// Models sometimes send tool arguments as a JSON string or null. Turn them into
+/// the object the protocol requires, or answer with a tool error the model can read.
+fn repair_tool_call(value: &mut Value) -> std::result::Result<bool, Value> {
+    if value.get("method").and_then(Value::as_str) != Some("tools/call") {
+        return Ok(false);
+    }
+    // A notification has no id and must never be answered; the worker ignores it.
+    let Some(id) = value.get("id").cloned() else {
+        return Ok(false);
+    };
+    let Some(params) = value.get_mut("params").and_then(Value::as_object_mut) else {
+        return Ok(false);
+    };
+    let repaired = match params.get("arguments") {
+        None | Some(Value::Object(_)) => return Ok(false),
+        Some(Value::Null) => None,
+        Some(Value::String(text)) if text.trim().is_empty() => {
+            Some(Value::Object(Default::default()))
+        }
+        Some(Value::String(text)) => match serde_json::from_str::<Value>(text) {
+            Ok(object @ Value::Object(_)) => Some(object),
+            _ => return Err(tool_error(&id, "INVALID_INPUT", ARGUMENTS_OBJECT)),
+        },
+        Some(_) => return Err(tool_error(&id, "INVALID_INPUT", ARGUMENTS_OBJECT)),
+    };
+    match repaired {
+        Some(object) => params.insert("arguments".into(), object),
+        None => params.remove("arguments"),
+    };
+    Ok(true)
 }
 async fn output(stdout: &mut tokio::io::Stdout, value: &Value) -> std::io::Result<()> {
     stdout.write_all(&serde_json::to_vec(value)?).await?;
@@ -191,7 +263,7 @@ async fn serve(
     };
     let mut initialize: Option<Value> = None;
     let mut initialized = false;
-    let mut pending: HashMap<String, Value> = HashMap::new();
+    let mut pending: HashMap<String, Pending> = HashMap::new();
     let mut tick = tokio::time::interval(Duration::from_millis(75));
     loop {
         tokio::select! {
@@ -213,9 +285,14 @@ async fn serve(
             }
             event = receiver.recv() => match event {
                 Some(Event::ClientEnd) | None => break,
-                Some(Event::Client(bytes)) => {
-                    let Ok(value) = serde_json::from_slice::<Value>(&bytes) else { continue };
-                    let id = value.get("id");
+                Some(Event::Client(mut bytes)) => {
+                    let Ok(mut value) = serde_json::from_slice::<Value>(&bytes) else { continue };
+                    match repair_tool_call(&mut value) {
+                        Ok(true) => bytes = serde_json::to_vec(&value)?,
+                        Ok(false) => {}
+                        Err(reply) => { output(&mut stdout, &reply).await?; continue; }
+                    }
+                    let request = Pending::of(&value);
                     let method = value.get("method").and_then(Value::as_str);
                     // During a pause, reject new requests explicitly. In particular, never
                     // buffer and retry mutating operations after a worker restart.
@@ -231,27 +308,27 @@ async fn serve(
                                 worker = Some(next);
                                 if reinitialize {
                                     initialize = Some(value.clone());
-                                    if let Some(id) = id { pending.insert(id.to_string(), id.clone()); }
+                                    if let Some(request) = &request { pending.insert(request.id.to_string(), request.clone()); }
                                     if worker.as_mut().unwrap().send(&bytes).await.is_err() { worker = None; }
                                 } else { deferred.push(bytes); }
                             }
-                            Err(_) => { if let Some(id) = id { output(&mut stdout, &paused(id, false)).await?; } }
+                            Err(_) => { if let Some(request) = &request { output(&mut stdout, &paused(request, false)).await?; } }
                         }
                         continue;
                     }
                     if !deferred.is_empty() { deferred.push(bytes); continue; }
                     let unavailable = control::active(&base).is_some() || worker.as_ref().is_none_or(|w| w.bootstrap.is_some());
                     if unavailable {
-                        if let Some(id) = id { output(&mut stdout, &paused(id, false)).await?; }
+                        if let Some(request) = &request { output(&mut stdout, &paused(request, false)).await?; }
                         continue;
                     }
                     if method == Some("initialize") { initialize = Some(value.clone()); }
                     if method == Some("notifications/initialized") { initialized = true; }
                     if method.is_some() {
-                        if let Some(id) = id { pending.insert(id.to_string(), id.clone()); }
+                        if let Some(request) = &request { pending.insert(request.id.to_string(), request.clone()); }
                     }
                     if worker.as_mut().unwrap().send(&bytes).await.is_err() {
-                        for id in pending.values() { output(&mut stdout, &paused(id, true)).await?; }
+                        for request in pending.values() { output(&mut stdout, &paused(request, true)).await?; }
                         pending.clear();
                         if let Some(old) = worker.take() { old.stop().await; }
                     }
@@ -262,14 +339,14 @@ async fn serve(
                     if bootstrap.is_some() && value.get("id").and_then(Value::as_str) == bootstrap {
                         if value.get("error").is_some() {
                             for held in deferred.drain(..) {
-                                if let Some(id) = serde_json::from_slice::<Value>(&held).ok().and_then(|v| v.get("id").cloned()) { output(&mut stdout, &paused(&id, false)).await?; }
+                                if let Some(request) = Pending::of_bytes(&held) { output(&mut stdout, &paused(&request, false)).await?; }
                             }
                             if let Some(old) = worker.take() { old.stop().await; }
                         } else if let Some(w) = worker.as_mut() {
                             w.bootstrap = None;
                             if initialized { w.send(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}").await?; }
                             for held in deferred.drain(..) {
-                                if let Some(id) = serde_json::from_slice::<Value>(&held).ok().and_then(|v| v.get("id").cloned()) { pending.insert(id.to_string(), id); }
+                                if let Some(request) = Pending::of_bytes(&held) { pending.insert(request.id.to_string(), request); }
                                 w.send(&held).await?;
                             }
                         }
@@ -281,9 +358,9 @@ async fn serve(
                 }
                 Some(Event::WorkerEnd(g)) if g == generation => {
                     for held in deferred.drain(..) {
-                        if let Some(id) = serde_json::from_slice::<Value>(&held).ok().and_then(|v| v.get("id").cloned()) { output(&mut stdout, &paused(&id, false)).await?; }
+                        if let Some(request) = Pending::of_bytes(&held) { output(&mut stdout, &paused(&request, false)).await?; }
                     }
-                    for id in pending.values() { output(&mut stdout, &paused(id, true)).await?; }
+                    for request in pending.values() { output(&mut stdout, &paused(request, true)).await?; }
                     pending.clear();
                     if let Some(old) = worker.take() { old.stop().await; }
                 }
@@ -295,4 +372,51 @@ async fn serve(
         old.stop().await;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // 工具调用遇到后端暂停时，必须以 isError 工具结果返回给 AI，而不是协议错误（客户端会弹窗）。
+    #[test]
+    fn paused_tool_calls_are_tool_results_and_other_requests_stay_protocol_errors() {
+        let call = Pending {
+            id: json!(7),
+            tool_call: true,
+        };
+        let reply = paused(&call, false);
+        assert_eq!(reply["result"]["isError"], true);
+        assert!(reply.get("error").is_none());
+        let list = Pending {
+            id: json!(8),
+            tool_call: false,
+        };
+        assert_eq!(paused(&list, true)["error"]["code"], -32000);
+    }
+
+    // 字符串化或 null 的 arguments 被修正；无法修正的返回工具错误。
+    #[test]
+    fn tool_call_arguments_are_repaired_or_rejected_as_tool_errors() {
+        let mut value = json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_entries","arguments":"{\"items\":[{\"id\":\"a\"}]}"}});
+        assert_eq!(repair_tool_call(&mut value), Ok(true));
+        assert_eq!(value["params"]["arguments"]["items"][0]["id"], "a");
+        let mut value = json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_mcp_config","arguments":null}});
+        assert_eq!(repair_tool_call(&mut value), Ok(true));
+        assert!(value["params"].get("arguments").is_none());
+        let mut value = json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"x","arguments":[1]}});
+        assert_eq!(
+            repair_tool_call(&mut value).unwrap_err()["result"]["isError"],
+            true
+        );
+        let mut value = json!({"jsonrpc":"2.0","id":4,"method":"tools/list"});
+        assert_eq!(repair_tool_call(&mut value), Ok(false));
+        let mut value =
+            json!({"jsonrpc":"2.0","method":"tools/call","params":{"name":"x","arguments":[1]}});
+        assert_eq!(
+            repair_tool_call(&mut value),
+            Ok(false),
+            "notifications get no reply"
+        );
+    }
 }

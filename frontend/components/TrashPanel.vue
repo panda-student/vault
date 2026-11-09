@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { UnwrapRef } from "vue";
 import type { VaultUI } from "../composables/useVault";
-import { kindName, timestamp } from "../utils/display";
+import { accountsLine, entryName, kindName, timestamp } from "../utils/display";
 defineProps<{ v: UnwrapRef<VaultUI> }>();
 </script>
 <template>
@@ -27,9 +27,9 @@ defineProps<{ v: UnwrapRef<VaultUI> }>();
       :data-trash="entry.id"
     >
       <div>
-        <h3>{{ entry.title }}</h3>
+        <h3>{{ entryName(entry) }}</h3>
         <p class="description">
-          {{ kindName(entry.kind) }} · {{ entry.account || "无账号" }}
+          {{ kindName(entry.kind) }} · {{ accountsLine(entry) }}
         </p>
         <div class="chips">
           <span v-for="t in entry.tags" :key="t" class="chip">{{ t }}</span>
