@@ -41,7 +41,8 @@ if (!(Test-Path -LiteralPath $compiler)) {
         Invoke-WebRequest 'https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.13/nsis-3.13.zip' -OutFile $download -UseBasicParsing
         $hash = Get-Sha256 $download
         if ($hash -ne 'ba63dffc4410ee89193e1cb5a41989991bd77c61068da17e3156d136b7b0b3d8') { throw 'NSIS compiler checksum mismatch.' }
-        Expand-Archive -LiteralPath $download -DestinationPath $toolParent
+        tar.exe -xf $download -C $toolParent
+        if ($LASTEXITCODE -ne 0) { throw 'NSIS compiler extraction failed.' }
     }
 }
 & $compiler /INPUTCHARSET UTF8 "/DAPP_VERSION=$version" "/DAPP_REG_NAME=$RegistrationName" "/DPACKAGE_DIR=$package" "/DARTIFACT_DIR=$artifactRoot" (Join-Path $PSScriptRoot 'installer.nsi')
