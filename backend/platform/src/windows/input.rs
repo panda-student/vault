@@ -191,6 +191,25 @@ fn accessibility_identity() -> Option<(i32, Vec<i32>, Option<bool>)> {
         ))
     }
 }
+/// Sets a named field through UI Automation; the credential is resolved only
+/// after the field was found and checked.
+pub(crate) fn set_value<F>(
+    request: CaptureRequest,
+    resolve: F,
+) -> vault_contracts::errors::Result<FillStatus>
+where
+    F: FnOnce() -> vault_contracts::errors::Result<String>,
+{
+    request.validate()?;
+    Ok(match locator::set_value(request, resolve)? {
+        Ok(()) => FillStatus::status("value_set"),
+        Err(reason) => {
+            let mut status = FillStatus::status("unsupported_target");
+            status.reason = Some(reason);
+            status
+        }
+    })
+}
 impl Targets {
     pub fn capture(&self, request: CaptureRequest) -> vault_contracts::errors::Result<FillStatus> {
         request.validate()?;

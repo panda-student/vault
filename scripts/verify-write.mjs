@@ -38,25 +38,29 @@ try{
  await client.connect(transport);
  const created=await call('create_entries',{kind:'password',title:'Isolated native writing fixture',url:'https://example.invalid',secret,account:'fixture-account'});
  const args={credentialId:created.value.id,field:'secret'};
+ // Files take only non-secret fields: passwords and tokens are put in by vault itself.
+ const account='fixture-account',fileArgs={credentialId:created.value.id,field:'account'};
+ let result=await call('write_credential',{...args,target:{type:'file',path:join(directory,'secret.txt')}});
+ check('Secret is never written to a file',result.failed&&result.value.code==='SECRET_FILE_WRITE_FORBIDDEN'&&!(await readdir(directory)).includes('secret.txt'));
  const file=join(directory,'direct.txt');
- let result=await call('write_credential',{...args,target:{type:'file',path:file,template:'TOKEN={{credential}}\nkeep=true\n'}});
- check('Direct file create receives exact credential; MCP only returns status',!result.failed&&result.value.status==='file_written'&&await readFile(file,'utf8')===`TOKEN=${secret}\nkeep=true\n`);
- result=await call('write_credential',{...args,target:{type:'file',path:file}});
- check('Default create never overwrites existing file',result.failed&&await readFile(file,'utf8')===`TOKEN=${secret}\nkeep=true\n`);
+ result=await call('write_credential',{...fileArgs,target:{type:'file',path:file,template:'TOKEN={{credential}}\nkeep=true\n'}});
+ check('Direct file create receives exact credential; MCP only returns status',!result.failed&&result.value.status==='file_written'&&await readFile(file,'utf8')===`TOKEN=${account}\nkeep=true\n`);
+ result=await call('write_credential',{...fileArgs,target:{type:'file',path:file}});
+ check('Default create never overwrites existing file',result.failed&&await readFile(file,'utf8')===`TOKEN=${account}\nkeep=true\n`);
  await writeFile(file,'before=1\nTOKEN=REPLACE_HERE\nafter=2\n');
- result=await call('write_credential',{...args,target:{type:'file',path:file,mode:'replace',placeholder:'REPLACE_HERE'}});
- check('Existing file placeholder replacement preserves surrounding text',!result.failed&&await readFile(file,'utf8')===`before=1\nTOKEN=${secret}\nafter=2\n`);
- result=await call('write_credential',{...args,target:{type:'file',path:file,mode:'replace',placeholder:'absent'}});
- check('Missing placeholder fails without changing file',result.failed&&await readFile(file,'utf8')===`before=1\nTOKEN=${secret}\nafter=2\n`);
- result=await call('write_credential',{...args,target:{type:'file',path:'relative.txt'}});
+ result=await call('write_credential',{...fileArgs,target:{type:'file',path:file,mode:'replace',placeholder:'REPLACE_HERE'}});
+ check('Existing file placeholder replacement preserves surrounding text',!result.failed&&await readFile(file,'utf8')===`before=1\nTOKEN=${account}\nafter=2\n`);
+ result=await call('write_credential',{...fileArgs,target:{type:'file',path:file,mode:'replace',placeholder:'absent'}});
+ check('Missing placeholder fails without changing file',result.failed&&await readFile(file,'utf8')===`before=1\nTOKEN=${account}\nafter=2\n`);
+ result=await call('write_credential',{...fileArgs,target:{type:'file',path:'relative.txt'}});
  check('Relative file path is rejected',result.failed&&result.value.code==='ABSOLUTE_FILE_PATH_REQUIRED');
- result=await call('write_credential',{...args,target:{type:'file',path:join(directory,'duplicate.txt'),template:'{{credential}} {{credential}}'}});
+ result=await call('write_credential',{...fileArgs,target:{type:'file',path:join(directory,'duplicate.txt'),template:'{{credential}} {{credential}}'}});
  check('Ambiguous duplicate marker is rejected before creating a file',result.failed&&!(await readdir(directory)).includes('duplicate.txt'));
  const binary=join(directory,'binary.bin');await writeFile(binary,Buffer.from([255,254,255]));
- result=await call('write_credential',{...args,target:{type:'file',path:binary,mode:'replace'}});
+ result=await call('write_credential',{...fileArgs,target:{type:'file',path:binary,mode:'replace'}});
  check('Non-UTF8 existing file is not modified',result.failed&&(await readFile(binary)).equals(Buffer.from([255,254,255])));
  const locked=join(directory,'readonly.txt');await writeFile(locked,'{{credential}}');await chmod(locked,0o444);
- try{result=await call('write_credential',{...args,target:{type:'file',path:locked,mode:'replace'}});check('Read-only file fails without changing contents',result.failed&&await readFile(locked,'utf8')==='{{credential}}');}finally{await chmod(locked,0o666);}
+ try{result=await call('write_credential',{...fileArgs,target:{type:'file',path:locked,mode:'replace'}});check('Read-only file fails without changing contents',result.failed&&await readFile(locked,'utf8')==='{{credential}}');}finally{await chmod(locked,0o666);}
  check('No staging files remain after file operations',!(await readdir(directory)).some(name=>name.startsWith('.vault-write-')));
  for(const editor of ['notepad','ise']){
   const file=join(directory,`vault-write-audit-${editor}-${Date.now()}.${editor==='ise'?'ps1':'txt'}`);

@@ -32,6 +32,26 @@ impl SystemPlatform for WindowsService {
     ) -> Result<FillStatus> {
         WindowsService::fill_target(self, t, r)
     }
+    fn fill_console(
+        &self,
+        request: vault_contracts::filling::ConsoleRequest,
+        r: Box<dyn FnOnce() -> Result<String> + '_>,
+    ) -> Result<FillStatus> {
+        super::console::fill(request, r)
+    }
+    fn set_value(
+        &self,
+        request: CaptureRequest,
+        r: Box<dyn FnOnce() -> Result<String> + '_>,
+    ) -> Result<FillStatus> {
+        input::set_value(request, r)
+    }
+    fn askpass(
+        &self,
+        answers: vault_contracts::filling::AskpassAnswers,
+    ) -> Result<Box<dyn vault_contracts::filling::AskpassSession>> {
+        Ok(Box::new(super::askpass::Session::open(answers)?))
+    }
     fn replace_file(&self, d: &Path, r: &Path) -> Result<()> {
         WindowsService::replace_file(self, d, r)
     }

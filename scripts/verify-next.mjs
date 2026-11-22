@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-const executable=resolve(process.env.VAULT_EXE||'target/release/vault.exe');
+const executable=resolve(process.env.VAULT_EXE||'artifacts/test-build/vault.exe');
 const root=await mkdtemp(join(tmpdir(),'vault-next-'));
 const data=join(root,'data'),report={passed:false,checks:[],root};
 const check=(name,ok)=>{report.checks.push({name,passed:!!ok});assert.ok(ok,name);console.log('PASS',name);};
@@ -27,7 +27,7 @@ try{
  const launch=config.value.mcpServers?.vault;
  check('mcp-config-name-and-current-path',!config.failed&&launch&&await realpath(launch.command)===await realpath(executable)&&launch.args[0]==='--mcp'&&launch.args[1]==='--data-dir'&&await realpath(launch.args[2])===await realpath(data));
  const tools=(await client.listTools()).tools;
- check('twelve-default-tools-without-sync-settings-api-execution-or-purge',tools.length===12&&!tools.some(t=>/^(get_settings|update_settings|sync_now)$|execute_api|trash|purge/.test(t.name)));
+ check('twelve-default-tools-without-sync-settings-api-execution-or-purge',tools.length===12&&!tools.some(t=>/^(send_request|open_tunnel)$/.test(t.name))&&!tools.some(t=>/^(get_settings|update_settings|sync_now)$|execute_api|trash|purge/.test(t.name)));
  const created=await call('create_entries',{items:[
   {kind:'database',title:'MCP DB UVT',tags:['MCP System','UVT'],database:{databaseType:'Oracle',host:'db-next.invalid',port:'1521',databaseName:'ORCL'},secret},
   {kind:'database',title:'MCP DB Local',database:{databaseType:'Redis',host:'127.0.0.1',port:'6379',databaseName:'0'},secret:''},
@@ -40,11 +40,19 @@ try{
  for(const query of ['MCP System','UVT','db-next.invalid']){
   const r=await call('search_entries',{query});check(`search:${query}`,r.value.entries.some(e=>e.id===db.id));
  }
- for(const [field,expected] of [['host','db-next.invalid'],['port','1521'],['database_name','ORCL'],['secret',secret]]){
+ for(const [field,expected] of [['host','db-next.invalid'],['port','1521'],['database_name','ORCL']]){
   const path=join(root,`${field}.txt`);
   const r=await call('write_credential',{credentialId:db.id,field,target:{type:'file',path}});
   check(`local-field-write:${field}`,!r.failed&&(await readFile(path,'utf8'))===expected);
  }
+ const secretFile=await call('write_credential',{credentialId:db.id,field:'secret',target:{type:'file',path:join(root,'secret.txt')}});
+ check('secret-never-written-to-file',secretFile.failed&&secretFile.value.code==='SECRET_FILE_WRITE_FORBIDDEN');
+ // Any program gets the secret from vault itself; its output comes back masked.
+ const echo=[process.execPath,'-e','console.log(process.env.VAULT_SECRET===process.argv[1]?"same "+process.argv[1]:"differ")'];
+ const ran=await call('write_credential',{credentialId:db.id,field:'secret',target:{type:'command',command:[...echo,'{{secret}}'],env:{VAULT_SECRET:'{{credential}}'}}});
+ check('command-receives-secret-and-output-is-masked',!ran.failed&&ran.value.status==='command_finished'&&ran.value.exitCode===0&&ran.value.stdout.trim()==='same ***'&&!JSON.stringify(ran.value).includes(secret));
+ const stdin=await call('write_credential',{credentialId:db.id,field:'secret',target:{type:'command',command:[process.execPath,'-e','process.stdin.pipe(process.stdout)'],stdin:'in={{password}}'}});
+ check('command-stdin-masked',!stdin.failed&&stdin.value.stdout==='in=***');
  const poisoned=await call('update_entries',{id:db.id,expectedRevision:1,tags:[secret]});
  check('metadata-update',!poisoned.failed);
  const guarded=await call('get_entries',{id:db.id});
@@ -67,11 +75,15 @@ try{
  const site=(await call('create_entries',{items:[{kind:'password',url:'https://groups.invalid',groups:[{environment:'生产',account:'prod',password:secret},{environment:'测试',account:'test',token:'FAKE_GROUP_TOKEN_ONLY'}]}]})).value.results[0];
  const siteMeta=(await call('get_entries',{items:[{id:site.id}]})).value.results[0];
  check('groups-metadata-without-secrets',siteMeta.name==='groups.invalid'&&siteMeta.groups.length===2&&siteMeta.groups[0].hasPassword&&siteMeta.groups[1].hasToken&&!JSON.stringify(siteMeta).includes('FAKE_GROUP_TOKEN_ONLY'));
- const ambiguous=await call('write_credential',{credentialId:site.id,field:'token',target:{type:'file',path:join(root,'ambiguous.txt')}});
+ const ambiguous=await call('write_credential',{credentialId:site.id,field:'token',target:{type:'command',command:[process.execPath,'-e',''],env:{T:'{{token}}'}}});
  check('several-groups-require-group-id',ambiguous.failed&&ambiguous.value.code==='GROUP_REQUIRED');
- const tokenPath=join(root,'group-token.txt');
- const tokenWrite=await call('write_credential',{credentialId:site.id,groupId:siteMeta.groups[1].id,field:'token',target:{type:'file',path:tokenPath}});
- check('group-token-written-locally',!tokenWrite.failed&&(await readFile(tokenPath,'utf8'))==='FAKE_GROUP_TOKEN_ONLY');
+ const groupPath=join(root,'group-account.txt');
+ const groupWrite=await call('write_credential',{credentialId:site.id,groupId:siteMeta.groups[1].id,field:'account',target:{type:'file',path:groupPath}});
+ check('group-account-written-locally',!groupWrite.failed&&(await readFile(groupPath,'utf8'))==='test');
+ const groupToken=await call('write_credential',{credentialId:site.id,groupId:siteMeta.groups[1].id,field:'token',target:{type:'file',path:join(root,'group-token.txt')}});
+ check('group-token-never-written-to-file',groupToken.failed&&groupToken.value.code==='SECRET_FILE_WRITE_FORBIDDEN');
+ const groupRun=await call('write_credential',{credentialId:site.id,groupId:siteMeta.groups[1].id,field:'token',target:{type:'command',command:[process.execPath,'-e','console.log(process.env.T==="FAKE_GROUP_TOKEN_ONLY"?"ok "+process.env.T:"wrong")'],env:{T:'{{token}}'}}});
+ check('group-token-injected-by-vault-only',!groupRun.failed&&groupRun.value.stdout.trim()==='ok ***'&&!JSON.stringify(groupRun.value).includes('FAKE_GROUP_TOKEN_ONLY'));
  // Encoding slips a model commonly makes are repaired instead of rejected.
  const slipped=await call('update_entries',{items:JSON.stringify([{id:site.id,expectedRevision:String(siteMeta.revision),title:null,groups:{id:siteMeta.groups[0].id,environment:'正式'}}])});
  check('stringified-and-null-arguments-repaired',!slipped.failed);

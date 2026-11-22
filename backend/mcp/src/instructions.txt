@@ -19,9 +19,28 @@ Updates require expectedRevision. Only fields you pass change; omitted passwords
 tokens are kept. Change a group by passing its groups[].id, add a group by omitting
 the id, delete groups with removeGroups.
 
-Use write_credential to use a value locally (into a captured input or a file). Pass
-groupId when the entry has several groups and serviceId when field=service_url and
-it has several addresses. File writes return status only.
+Passwords and tokens are put in only by vault itself, with write_credential; they
+never reach you. Ask vault to put the value wherever the work needs it:
+- A program or script, whatever the tool: target.type=command. Give the command,
+  and write placeholders such as {{password}}, {{token}} or {{secret}} in its
+  arguments, in env values (e.g. {"QQ_AUTH": "{{secret}}"}) or in stdin. vault runs
+  it, waits and returns exitCode, stdout and stderr with the values masked. git, ssh
+  and sudo password prompts of that program are answered by vault itself when they
+  name the entry's own host.
+- Any field the user asks you to fill: target.type=auto. Say where it is and vault
+  picks the method and falls back on its own: port+selector for a web page,
+  processId (or windowTitle) alone for a console waiting for a password,
+  windowTitle/processId+fieldName for a desktop or browser field. The result names
+  the method used and the attempts that did not apply. A console that is not
+  waiting for a password is refused, never typed into; a terminal window such as
+  Windows Terminal is refused with terminal_window, so pass the processId of the
+  program asking for the password.
+- Specific methods: target.type=browser (port + CSS selector of an Edge/Chrome
+  started with --remote-debugging-port), or capture_fill_target then
+  target.type=input for a native window.
+write_credential with target.type=file writes only non-secret fields (account, url,
+host, port, ...); password, token and secret are refused. Pass groupId when the entry
+has several groups and serviceId when field=service_url and it has several addresses.
 
 Capture a writable target before filling. For browsers use
 windowTitle+fieldName+expectedPassword to acquire native focus. input_sent means

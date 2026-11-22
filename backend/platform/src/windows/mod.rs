@@ -5,6 +5,8 @@ use vault_contracts::{
     filling::CaptureRequest,
     operations::ClipboardPort,
 };
+mod askpass;
+mod console;
 mod input;
 pub mod pipes;
 pub(crate) mod processes;
@@ -12,6 +14,22 @@ mod startup;
 use vault_contracts::filling::FillStatus;
 use vault_contracts::updates::UpdateLaunch;
 mod ports;
+/// Runs a short-lived helper role of this executable and returns its exit
+/// code, or `None` for a normal start. `args` excludes the program name.
+pub fn run_helper(args: &[std::ffi::OsString]) -> Option<i32> {
+    if args.first().is_some_and(|a| a == console::FLAG) {
+        return Some(console::helper(&args[1..]));
+    }
+    if askpass::is_client(args) {
+        return Some(askpass::client(&args[0]));
+    }
+    None
+}
+/// Whether these arguments start a helper role rather than a desktop or MCP copy.
+pub(crate) fn is_helper(args: &[std::ffi::OsString]) -> bool {
+    args.first().is_some_and(|a| a == console::FLAG)
+        || (args.len() == 1 && !args[0].to_string_lossy().starts_with("--"))
+}
 pub(crate) fn wait_for_process(pid: u32) -> Result<()> {
     use ::windows::Win32::{
         Foundation::CloseHandle,

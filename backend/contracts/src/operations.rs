@@ -144,6 +144,6 @@ impl Operation {
                 | Self::SyncRespond(_)
                 | Self::McpSyncRun
                 | Self::McpUpdateSettings(_)
-        )
+        ) || matches!(self, Self::Write(args) if args.is_command() || args.is_auto())
     }
 }

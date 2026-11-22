@@ -268,6 +268,7 @@ impl CoreSession {
             let mut guard = self.guard.write().map_err(|_| AppError::storage())?;
             self.refresh_output_guard(&mut guard)?;
             result.map(|mut value| {
+                guard.mask_program_output(&mut value);
                 guard.scrub(&mut value);
                 value
             })

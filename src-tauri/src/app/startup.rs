@@ -111,6 +111,11 @@ fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
     )
 }
 pub(super) fn main_entry() {
+    // Askpass and console-fill helpers answer and exit before any app startup.
+    let helper_args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    if let Some(code) = vault_core::bootstrap::run_helper(&helper_args) {
+        std::process::exit(code);
+    }
     let installer = std::env::args_os()
         .nth(1)
         .is_some_and(|arg| arg == "--installer-replace");

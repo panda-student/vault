@@ -1,6 +1,7 @@
 //! Trusted process composition, separate from client operations.
 pub use vault_platform::runtime;
 pub use vault_platform::windows::pipes;
+pub use vault_platform::windows::run_helper;
 pub use vault_updater::UpdateRuntime;
 
 /// Assemble the backend with its encrypted repository. No framework is required.

@@ -1,7 +1,7 @@
 //! Capabilities injected by bootstrap. Business services do not import native implementations.
 use crate::{
     errors::Result,
-    filling::{CaptureRequest, FillStatus},
+    filling::{AskpassAnswers, AskpassSession, CaptureRequest, ConsoleRequest, FillStatus},
     operations::ClipboardPort,
     updates::UpdateLaunch,
 };
@@ -22,6 +22,21 @@ pub trait SystemPlatform: Send + Sync {
         target: &str,
         resolve: Box<dyn FnOnce() -> Result<String> + '_>,
     ) -> Result<FillStatus>;
+    /// Types into a console program that is waiting for a password, or refuses.
+    fn fill_console(
+        &self,
+        request: ConsoleRequest,
+        resolve: Box<dyn FnOnce() -> Result<String> + '_>,
+    ) -> Result<FillStatus>;
+    /// Sets a named desktop field through UI Automation without focusing it
+    /// or reading anything back.
+    fn set_value(
+        &self,
+        request: CaptureRequest,
+        resolve: Box<dyn FnOnce() -> Result<String> + '_>,
+    ) -> Result<FillStatus>;
+    /// Opens an askpass channel for one program vault runs.
+    fn askpass(&self, answers: AskpassAnswers) -> Result<Box<dyn AskpassSession>>;
     fn replace_file(&self, destination: &Path, replacement: &Path) -> Result<()>;
     fn bind_clipboard(&self, port: Arc<dyn ClipboardPort>) -> Result<()>;
     fn copy_text(&self, text: String) -> Result<()>;

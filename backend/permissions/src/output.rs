@@ -59,6 +59,41 @@ impl OutputGuard {
             .iter()
             .any(|value| text.contains(value.0.as_str()))
     }
+    /// Replaces every protected value inside `text` with `***`, longest first,
+    /// so text that merely contains one keeps the rest readable.
+    pub fn mask_text(&self, text: &str) -> String {
+        let mut values: Vec<&str> = self
+            .values
+            .iter()
+            .map(|value| value.0.as_str())
+            .filter(|value| text.contains(*value))
+            .collect();
+        if values.is_empty() {
+            return text.to_owned();
+        }
+        values.sort_by_key(|value| std::cmp::Reverse(value.len()));
+        let mut masked = text.to_owned();
+        for value in values {
+            masked = masked.replace(value, "***");
+        }
+        masked
+    }
+    /// What a program vault ran printed is masked in place, not dropped: one
+    /// line that happens to contain an unrelated stored value must not hide
+    /// the whole output. Other fields still go through `scrub`.
+    pub fn mask_program_output(&self, value: &mut Value) {
+        let Value::Object(values) = value else {
+            return;
+        };
+        if values.get("status").and_then(Value::as_str) != Some("command_finished") {
+            return;
+        }
+        for name in ["stdout", "stderr"] {
+            if let Some(Value::String(text)) = values.get_mut(name) {
+                *text = self.mask_text(text);
+            }
+        }
+    }
     pub fn scrub(&self, value: &mut Value) {
         match value {
             Value::String(text) if self.contains(text) => *value = Value::Null,
@@ -97,5 +132,20 @@ mod tests {
         assert!(value["title"].is_null());
         assert!(value["nested"][0].is_null());
         assert_eq!(value["safe"], "service label");
+    }
+    #[test]
+    fn program_output_is_masked_in_place() {
+        let mut guard = OutputGuard::default();
+        guard.add("1234");
+        guard.add("synthetic-protected-API_123");
+        let mut value = serde_json::json!({"status":"command_finished","stdout":"account 991234 ok\nmail list","stderr":"key synthetic-protected-API_123","exitCode":0});
+        guard.mask_program_output(&mut value);
+        guard.scrub(&mut value);
+        assert_eq!(value["stdout"], "account 99*** ok\nmail list");
+        assert_eq!(value["stderr"], "key ***");
+        let mut other = serde_json::json!({"status":"other","stdout":"991234"});
+        guard.mask_program_output(&mut other);
+        guard.scrub(&mut other);
+        assert!(other["stdout"].is_null());
     }
 }

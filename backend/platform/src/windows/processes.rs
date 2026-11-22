@@ -194,6 +194,11 @@ pub(crate) fn desktops(executable: &Path) -> Result<Vec<Desktop>> {
             if args.iter().any(|a| a == "--mcp") {
                 continue;
             }
+            // Askpass and console helpers are short-lived and own no data directory.
+            let rest: Vec<std::ffi::OsString> = args.iter().skip(1).map(Into::into).collect();
+            if crate::windows::is_helper(&rest) {
+                continue;
+            }
             let directory = desktop_directory(&args, &target)?;
             let mut created = FILETIME::default();
             let mut exit = FILETIME::default();

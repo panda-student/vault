@@ -27,7 +27,7 @@ export function usePermissions(v: UnwrapRef<VaultUI>) {
     { key: "create", label: "新增" },
     { key: "update", label: "修改" },
     { key: "delete", label: "移入垃圾桶" },
-    { key: "fillInput", label: "窗口填写" },
+    { key: "fillInput", label: "注入填写" },
     { key: "writeFile", label: "写入文件" },
   ];
   const policy = (s: Settings | null | undefined) =>

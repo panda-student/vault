@@ -1,6 +1,10 @@
 //! Local filling service. It receives storage access internally, never from adapters.
 use vault_contracts::ports::repository::CredentialReader;
 use vault_contracts::{errors::Result, filling::CaptureRequest};
+mod auto;
+mod browser;
+mod command;
+mod inject;
 #[cfg(test)]
 mod tests;
 mod write;

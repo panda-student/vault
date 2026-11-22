@@ -509,13 +509,17 @@ fn validation_errors_carry_field_details_for_self_correction() {
     assert_eq!(error.details.as_ref().unwrap()[0].field, "title");
 }
 
-fn write(id: &str, path: &Path) -> Operation {
+fn write_field(id: &str, field: &str, path: &Path) -> Operation {
     Operation::Write(
         serde_json::from_value(
-            json!({"credentialId":id,"field":"secret","target":{"type":"file","path":path}}),
+            json!({"credentialId":id,"field":field,"target":{"type":"file","path":path}}),
         )
         .unwrap(),
     )
+}
+/// Files take only non-secret fields; passwords and tokens are put in by vault itself.
+fn write(id: &str, path: &Path) -> Operation {
+    write_field(id, "account", path)
 }
 #[test]
 fn shared_interface_preserves_revision_trash_and_local_writes() {
@@ -543,16 +547,23 @@ fn shared_interface_preserves_revision_trash_and_local_writes() {
         "updated"
     );
     let target = dir.path().join("credential.txt");
+    // 密码、token 一律不落文件：由 vault 自己注入程序、页面或输入框，文件只写非密钥字段。
+    for secret in ["secret", "password", "token"] {
+        assert_eq!(
+            mcp.execute(write_field(&entry.id, secret, &target))
+                .unwrap_err()
+                .code,
+            "SECRET_FILE_WRITE_FORBIDDEN"
+        );
+        assert!(!target.exists());
+    }
     assert!(
         !mcp.execute(write(&entry.id, &target))
             .unwrap()
             .to_string()
             .contains("FAKE_CORE_TEST_SECRET")
     );
-    assert_eq!(
-        std::fs::read_to_string(&target).unwrap(),
-        "FAKE_CORE_TEST_SECRET_8192"
-    );
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), "updated");
     mcp.execute(Operation::Delete(vec![EntryVersion {
         id: entry.id.clone(),
         expected_revision: revision,

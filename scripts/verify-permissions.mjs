@@ -37,16 +37,18 @@ try {
   ['create',['create_entries'],[['create_entries',{kind:'password',title:'denied',url:'https://permission.invalid',secret}]]],
   ['update',['update_entries'],[['update_entries',{id,expectedRevision:revision,title:'denied'}]]],
   ['delete',['delete_entries'],[['delete_entries',{id,expectedRevision:revision}]]],
-  ['fillInput',['capture_fill_target'],[['capture_fill_target',{}],['write_credential',{credentialId:id,field:'secret',target:{type:'input',targetId:'invalid'}}]]],
-  ['writeFile',['export_entries'],[['write_credential',{credentialId:id,field:'secret',target:{type:'file',path:join(root,'denied.txt')}}]]],
+  ['fillInput',['capture_fill_target'],[['capture_fill_target',{}],['write_credential',{credentialId:id,field:'secret',target:{type:'input',targetId:'invalid'}}],['write_credential',{credentialId:id,field:'secret',target:{type:'command',command:[process.execPath,'-e','']}}]]],
+  ['writeFile',['export_entries'],[['write_credential',{credentialId:id,field:'url',target:{type:'file',path:join(root,'denied.txt')}}]]],
  ];
  for(const [key,hidden,calls] of scenarios){
   await policy({[key]:false});
   const discovered=await names();check(`discovery-revoked:${key}`,hidden.every(name=>!discovered.includes(name)));
   for(const [name,args] of calls){const result=await call(name,args);check(`live-core-rejects:${key}:${name}`,result.failed&&result.value.code==='PERMISSION_DENIED');}
   if(key==='fillInput'){
-   const path=join(root,'allowed-file.txt'),result=await call('write_credential',{credentialId:id,field:'secret',target:{type:'file',path}});
-   check('window-denial-does-not-disable-file',!result.failed&&(await readFile(path,'utf8'))===secret);
+   const path=join(root,'allowed-file.txt'),result=await call('write_credential',{credentialId:id,field:'url',target:{type:'file',path}});
+   check('window-denial-does-not-disable-file',!result.failed&&(await readFile(path,'utf8'))==='https://permission.invalid');
+   const forbidden=await call('write_credential',{credentialId:id,field:'secret',target:{type:'file',path:join(root,'secret-file.txt')}});
+   check('secret-never-written-to-file',forbidden.failed&&forbidden.value.code==='SECRET_FILE_WRITE_FORBIDDEN');
   }
   if(key==='writeFile'){
    const result=await call('write_credential',{credentialId:id,field:'secret',target:{type:'input',targetId:'invalid'}});

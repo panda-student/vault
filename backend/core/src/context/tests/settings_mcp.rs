@@ -27,6 +27,26 @@ impl SystemPlatform for FakePlatform {
     ) -> Result<FillStatus> {
         unsupported()
     }
+    fn fill_console(
+        &self,
+        _: vault_contracts::filling::ConsoleRequest,
+        _: Box<dyn FnOnce() -> Result<String> + '_>,
+    ) -> Result<FillStatus> {
+        unsupported()
+    }
+    fn set_value(
+        &self,
+        _: CaptureRequest,
+        _: Box<dyn FnOnce() -> Result<String> + '_>,
+    ) -> Result<FillStatus> {
+        unsupported()
+    }
+    fn askpass(
+        &self,
+        _: vault_contracts::filling::AskpassAnswers,
+    ) -> Result<Box<dyn vault_contracts::filling::AskpassSession>> {
+        unsupported()
+    }
     fn replace_file(&self, _: &Path, _: &Path) -> Result<()> {
         unsupported()
     }
